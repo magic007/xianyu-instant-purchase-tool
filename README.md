@@ -410,6 +410,17 @@ python automation/service/auto_add_commodity/AutoAddCommodity.py
 
 4. 您可以通过程序输出查看秒杀结果和状态
 
+
+## 效果展示
+
+以下是闲鱼秒拍工具的实际运行效果展示：
+
+![秒拍工具界面1](images/Xnip2025-04-23_16-45-05.jpg)
+
+![秒拍工具界面2](images/Xnip2025-04-24_15-45-06.jpg)
+
+![秒拍工具界面3](images/Xnip2025-04-24_15-45-21.jpg)
+
 ### 使用技巧
 
 - **提前收藏**：建议至少在秒杀开始前10分钟完成收藏操作
@@ -423,3 +434,5 @@ python automation/service/auto_add_commodity/AutoAddCommodity.py
 - 请合理使用此工具，遵守闲鱼平台规则
 - 过于频繁的操作可能导致账号被限制
 - 建议每次秒杀操作后适当休息，避免连续大量请求
+
+
