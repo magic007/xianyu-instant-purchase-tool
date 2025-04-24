@@ -149,6 +149,7 @@ class AutoAddCommodity:
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--remote-debugging-port=9222")
+        chrome_options.add_argument("--window-size=1920,1080")  # 设置窗口大小
         
         # 使用本地ChromeDriver
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
@@ -156,50 +157,79 @@ class AutoAddCommodity:
         service = Service(executable_path=driver_path)
         
         try:
+            print("初始化Chrome浏览器...")
             driver = webdriver.Chrome(service=service, options=chrome_options)
             driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")  # 进一步隐藏
+            
+            print("正在访问闲鱼网站...")
             driver.get("https://www.goofish.com")
+            time.sleep(3)  # 等待页面加载
+            
+            print("获取当前页面标题:", driver.title)
             
             # 根据cookie判断是否是登录状态
             self.isLogin(driver)
             
-            # 更健壮的元素检测
+            # 改进登录状态检测: 直接尝试访问用户中心页面来确定是否已登录
             try:
-                # 尝试查找登录状态的用户名（这里可能需要根据实际页面元素调整）
                 print("正在检查登录状态...")
-                try:
-                    WebDriverWait(driver, 15).until(
-                        EC.presence_of_element_located((By.XPATH, '//*[contains(text(), "一只九尾猫") or contains(@class, "user-name")]')))
-                    print("已经登录")
-                    self.initCookie(driver=driver)
-                except (TimeoutException, NoSuchElementException):
-                    # 尝试点击登录按钮
-                    print("未检测到登录状态，尝试登录...")
-                    login_btn = WebDriverWait(driver, 15).until(
-                        EC.element_to_be_clickable((By.XPATH, '//*[contains(text(), "登录") or contains(@class, "login")]')))
-                    login_btn.click()
-                    
-                    # 等待登录框加载并切换
-                    try:
-                        WebDriverWait(driver, 15).until(EC.frame_to_be_available_and_switch_to_it((By.ID, "alibaba-login-box")))
-                        # 尝试点击快速进入按钮
-                        WebDriverWait(driver, 10).until(
-                            EC.element_to_be_clickable((By.XPATH, '//button[contains(text(), "快速进入")]'))).click()
-                    except (TimeoutException, NoSuchElementException) as e:
-                        print(f"登录界面元素未找到: {e}")
-                        print("请手动完成登录过程...")
-                        input("完成登录后按回车继续...")
-                        
-                    # 切回主框架
-                    driver.switch_to.default_content()
-                    self.initCookie(driver=driver)
                 
+                # 先获取当前页面的源代码，打印部分用于调试
+                page_source = driver.page_source
+                print("页面内容预览:", page_source[:500] + "..." if len(page_source) > 500 else page_source)
+                
+                # 尝试多种方式检测登录状态
+                login_element = None
+                login_methods = [
+                    # 尝试查找可能的登录状态指示元素
+                    (By.XPATH, '//div[contains(@class, "user-info") or contains(@class, "userInfo")]'),
+                    (By.XPATH, '//div[contains(@class, "user-name") or contains(@class, "userName")]'),
+                    (By.XPATH, '//div[contains(text(), "我的闲鱼")]'),
+                    (By.XPATH, '//img[contains(@class, "avatar") or contains(@class, "user-avatar")]'),
+                    # 尝试查找登录按钮，如果找不到，可能已登录
+                    (By.XPATH, '//div[contains(text(), "登录") or contains(@class, "login")]')
+                ]
+                
+                for method in login_methods:
+                    try:
+                        elements = driver.find_elements(*method)
+                        if elements:
+                            print(f"找到登录相关元素: {method}, 数量: {len(elements)}")
+                            for i, el in enumerate(elements):
+                                try:
+                                    print(f"元素 {i+1} 文本: {el.text}, 类名: {el.get_attribute('class')}")
+                                except:
+                                    print(f"元素 {i+1} 获取属性失败")
+                    except Exception as e:
+                        print(f"查找元素失败 {method}: {e}")
+                
+                # 尝试访问用户中心页面来确认登录状态
+                print("尝试访问用户中心页面...")
+                driver.get("https://www.goofish.com/personal?")
+                time.sleep(3)
+                
+                # 如果URL包含login，表示重定向到登录页，需要登录
+                if "login" in driver.current_url:
+                    print("被重定向到登录页，需要登录")
+                    driver.get("https://www.goofish.com/login?spm=a21ybx.seo.sitemap.1")
+                    input("请登录后按回车继续...\n")
+                    driver.get("https://www.goofish.com")
+                    time.sleep(3)
+                else:
+                    print("成功访问用户中心，已经登录")
+                
+                self.initCookie(driver=driver)
                 self.driver = driver
                 
             except Exception as e:
-                print(f"登录过程出错: {e}")
+                print(f"登录过程出错 ({type(e).__name__}): {e}")
+                print("堆栈跟踪:")
+                import traceback
+                traceback.print_exc()
+                
                 input("请手动完成登录，操作完成后按回车继续...")
                 driver.get("https://www.goofish.com")
+                time.sleep(3)
                 self.initCookie(driver=driver)
                 self.driver = driver
                 
@@ -215,22 +245,32 @@ class AutoAddCommodity:
         try:
             self.load_cookies(driver=driver)
             cookies = self.initCookie(driver)
-            if len(cookies) < 8:
-                print("Cookie无效或已过期，需要重新登录")
+            # 检查是否有关键Cookie
+            has_token = '_m_h5_tk' in cookies
+            
+            if len(cookies) < 8 or not has_token:
+                print(f"Cookie无效或已过期，需要重新登录 (Cookie数量: {len(cookies)}, 有token: {has_token})")
                 driver.get("https://www.goofish.com/login?spm=a21ybx.seo.sitemap.1")
                 input("请登录后按回车\n")
                 driver.get("https://www.goofish.com")
+                time.sleep(3)
                 # 重新加载登录后的Cookie
                 self.initCookie(driver)
                 self.cache_cookies(driver=driver)
                 print("登录成功，Cookie已保存")
             else:
                 print("Cookie有效，已成功登录")
+                
+            # 刷新页面应用cookie
+            driver.refresh()
+            time.sleep(3)
+            
         except Exception as e:
             print(f"登录过程发生错误: {e}")
             driver.get("https://www.goofish.com/login?spm=a21ybx.seo.sitemap.1")
             input("请登录后按回车\n")
             driver.get("https://www.goofish.com")
+            time.sleep(3)
             self.initCookie(driver)
             self.cache_cookies(driver=driver)
 
@@ -290,124 +330,225 @@ class AutoAddCommodity:
 
     def get_search_list(self, searchName: str = "#卖闲置2025年3月29日", priceRange: str = '1,99',
                         isAttention: bool = False) -> list:
+        print(f"开始搜索商品: {searchName}, 价格范围: {priceRange}, 仅关注: {isAttention}")
         session = Session()
         session.cookies.update(self.cookies)
         session.headers.update(self.headers)
         r: list = []
         initPageNum: int = 1
+        max_retries = 3  # 添加重试次数限制
 
         # 是否开启值新增加入关注的人商品
         def is_presell(itemId: str) -> bool:
-            data = {
-                'data': '{"itemId":"' + itemId + '"}',
-            }
-            params = self.createRequestParams(params={
+            try:
+                data = {
+                    'data': '{"itemId":"' + itemId + '"}',
+                }
+                params = self.createRequestParams(params={
+                    'jsv': '2.7.2',
+                    'appKey': '34839810',
+                    't': '',
+                    'sign': '',
+                    'v': '7.0',
+                    'type': 'json',
+                    'accountSite': 'xianyu',
+                    'dataType': 'json',
+                    'timeout': '20000',
+                    'api': 'mtop.taobao.idle.trade.order.render',
+                    'valueType': 'string',
+                    'sessionOption': 'AutoLoginOnly',
+                    'spm_cnt': 'a21ybx.create-order.0.0',
+                    'spm_pre': 'a21ybx.item.buy.1.41c93da6MgCSxD',
+                    'log_id': '41c93da6MgCSxD',
+                }, data=data)
+                response = session.post('https://h5api.m.goofish.com/h5/mtop.taobao.idle.trade.order.render/7.0/',
+                                      params=params, data=data)
+                if response.status_code != 200:
+                    print(f"商品 {itemId} 请求失败: 状态码 {response.status_code}")
+                    return False
+                    
+                result = response.json()
+                if 'data' not in result:
+                    print(f"商品 {itemId} 返回数据格式异常: {result}")
+                    return False
+                    
+                result_data = result['data']
+                if 'commonData' in result_data and ('secKillStart' in result_data['commonData']):
+                    secKillStart: int = int(result_data['commonData']['secKillStart'])
+                    isScopeTime: bool = time.localtime(secKillStart / 1000).tm_yday == time.localtime().tm_yday
+                    print(f"商品 {itemId} 秒杀时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(secKillStart/1000))}, 是否当天: {isScopeTime}")
+                    return isScopeTime
+                else:
+                    print(f"商品 {itemId} 不是预售商品")
+                    return False
+            except Exception as e:
+                print(f"检查商品 {itemId} 是否预售时出错: {e}")
+                return False
+
+        def nextPage(nextPageNum: int) -> bool:
+            try:
+                print(f"正在获取第 {nextPageNum} 页商品列表...")
+                params = {
+                    'jsv': '2.7.2',
+                    'appKey': '34839810',
+                    't': '',
+                    'sign': '',
+                    'v': '1.0',
+                    'type': 'originaljson',
+                    'accountSite': 'xianyu',
+                    'dataType': 'json',
+                    'timeout': '20000',
+                    'api': 'mtop.taobao.idlemtopsearch.pc.search',
+                    'sessionOption': 'AutoLoginOnly',
+                    'spm_cnt': 'a21ybx.search.0.0',
+                    'spm_pre': 'a21ybx.search.searchInput.0',
+                }
+                data = {
+                    'data': '{"pageNumber":' + str(
+                        nextPageNum) + ',"keyword":"' + searchName + '","fromFilter":true,"rowsPerPage":30,"sortValue":"","sortField":"","customDistance":"","gps":"","propValueStr":{"searchFilter":"priceRange:' + priceRange + ';"},"customGps":"","searchReqFromPage":"pcSearch","extraFilterValue":"{}","userPositionJson":"{}"}',
+                }
+                params = self.createRequestParams(params=params, data=data)
+                
+                retry_count = 0
+                while retry_count < max_retries:
+                    try:
+                        response = session.post("https://h5api.m.goofish.com/h5/mtop.taobao.idlemtopsearch.pc.search/1.0/",
+                                               params=params, data=data)
+                        if response.status_code != 200:
+                            print(f"获取页面 {nextPageNum} 失败: 状态码 {response.status_code}")
+                            retry_count += 1
+                            time.sleep(2)
+                            continue
+                            
+                        res_json = response.json()
+                        if 'data' not in res_json:
+                            print(f"页面 {nextPageNum} 返回数据格式异常: {res_json}")
+                            retry_count += 1
+                            time.sleep(2)
+                            continue
+                            
+                        res = res_json['data']
+                        if 'resultList' not in res:
+                            print(f"页面 {nextPageNum} 没有商品列表数据")
+                            return False
+                            
+                        print(f"第 {nextPageNum} 页找到 {len(res['resultList'])} 个商品")
+                        
+                        for item in res['resultList']:
+                            if 'data' not in item:
+                                continue
+                                
+                            itemData = item['data']
+                            if not itemData or 'item' not in itemData:
+                                continue
+                                
+                            itemMain = itemData.get('item', {}).get('main')
+                            if not itemMain or 'exContent' not in itemMain:
+                                continue
+                                
+                            try:
+                                itemExContent = itemMain['exContent']
+                                if 'itemId' not in itemExContent:
+                                    continue
+                                    
+                                # 获取商品ID和标题
+                                item_id = itemExContent['itemId']
+                                item_title = itemMain.get('title', 'Unknown')
+                                print(f"处理商品: [{item_id}] {item_title}")
+                                
+                                if isAttention:
+                                    # 如果只收藏关注的人发布的商品
+                                    fish_tags = str(itemExContent.get('fishTags', '[]'))
+                                    if '你关注过的人' in fish_tags and is_presell(item_id):
+                                        print(f"添加关注的人商品: {item_title}")
+                                        self.add_attention_list(item_id)
+                                        r.append(itemMain)
+                                else:
+                                    # 收藏所有当天预售商品
+                                    if is_presell(item_id):
+                                        print(f"添加预售商品: {item_title}")
+                                        self.add_attention_list(item_id)
+                                        r.append(itemMain)
+                            except Exception as e:
+                                print(f"处理商品时出错: {e}")
+                                continue
+                                
+                        # 检查是否有下一页
+                        has_next = res.get('resultInfo', {}).get('hasNextPage', False)
+                        print(f"是否有下一页: {has_next}")
+                        return has_next
+                        
+                    except Exception as e:
+                        print(f"处理页面 {nextPageNum} 时出错: {e}")
+                        retry_count += 1
+                        time.sleep(2)
+                        
+                print(f"页面 {nextPageNum} 处理失败，已重试 {max_retries} 次")
+                return False
+                
+            except Exception as e:
+                print(f"获取页面 {nextPageNum} 时出错: {e}")
+                return False
+
+        try:
+            print("开始分页获取商品列表...")
+            while nextPage(nextPageNum=initPageNum):
+                initPageNum = initPageNum + 1
+                time.sleep(1)  # 添加延迟，避免请求过快
+                
+            print(f"商品搜索完成，共找到 {len(r)} 个符合条件的商品")
+            return r
+        except Exception as e:
+            print(f"搜索商品列表时出错: {e}")
+            return []
+
+    # 将商品加入收藏列表
+    def add_attention_list(self, itemId: str):
+        try:
+            print(f"正在添加商品 {itemId} 到收藏列表...")
+            session = Session()
+            session.cookies.update(self.cookies)
+            session.headers.update(self.headers)
+            params = {
                 'jsv': '2.7.2',
                 'appKey': '34839810',
                 't': '',
                 'sign': '',
-                'v': '7.0',
-                'type': 'json',
-                'accountSite': 'xianyu',
-                'dataType': 'json',
-                'timeout': '20000',
-                'api': 'mtop.taobao.idle.trade.order.render',
-                'valueType': 'string',
-                'sessionOption': 'AutoLoginOnly',
-                'spm_cnt': 'a21ybx.create-order.0.0',
-                'spm_pre': 'a21ybx.item.buy.1.41c93da6MgCSxD',
-                'log_id': '41c93da6MgCSxD',
-            }, data=data)
-            result = session.post('https://h5api.m.goofish.com/h5/mtop.taobao.idle.trade.order.render/7.0/',
-                                  params=params, data=data).json()['data']
-            if result['commonData'] and ('secKillStart' in result['commonData']):
-                secKillStart: int = int(result['commonData']['secKillStart'])
-                isScopeTime: bool = time.localtime(secKillStart / 1000).tm_yday == time.localtime().tm_yday
-                return isScopeTime
-            else:
-                return False
-
-        def nextPage(nextPageNum: int) -> bool:
-            params = {
-                'jsv': '2.7.2',
-                'appKey': '34839810',
-                't': '1743221664877',
-                'sign': '64cb3d42f940c285c482be9a84538f9a',
                 'v': '1.0',
                 'type': 'originaljson',
                 'accountSite': 'xianyu',
                 'dataType': 'json',
                 'timeout': '20000',
-                'api': 'mtop.taobao.idlemtopsearch.pc.search',
+                'needLoginPC': 'true',
+                'api': 'mtop.taobao.idle.collect.item',
                 'sessionOption': 'AutoLoginOnly',
-                'spm_cnt': 'a21ybx.search.0.0',
-                'spm_pre': 'a21ybx.search.searchInput.0',
+                'spm_cnt': 'a21ybx.item.0.0',
+                'spm_pre': 'a21ybx.search.searchFeedList.3.59ed3dc7BjQvEO',
+                'log_id': '59ed3dc7BjQvEO',
             }
+
             data = {
-                'data': '{"pageNumber":' + str(
-                    nextPageNum) + ',"keyword":"' + searchName + '","fromFilter":true,"rowsPerPage":30,"sortValue":"","sortField":"","customDistance":"","gps":"","propValueStr":{"searchFilter":"priceRange:' + priceRange + ';"},"customGps":"","searchReqFromPage":"pcSearch","extraFilterValue":"{}","userPositionJson":"{}"}',
+                'data': '{"itemId":"' + itemId + '"}',
             }
+            
             params = self.createRequestParams(params=params, data=data)
-            res = session.post("https://h5api.m.goofish.com/h5/mtop.taobao.idlemtopsearch.pc.search/1.0/",
-                               params=params,
-                               data=data).json()['data']
-            for item in res['resultList']:
-                itemData = item['data']
-                if itemData:
-                    itemMain = itemData['item']['main']
-                    if itemMain:
-                        itemExContent = itemMain['exContent']
-                        if isAttention:
-                            if '你关注过的人' in str(itemExContent['fishTags']) and is_presell(itemExContent['itemId']):
-                                self.add_attention_list(itemExContent['itemId'])
-                                r.append(itemMain)
-                        else:
-                            if is_presell(itemExContent['itemId']):
-                                self.add_attention_list(itemExContent['itemId'])
-                                r.append(itemMain)
-            return res['resultInfo']['hasNextPage']
-
-        while nextPage(nextPageNum=initPageNum):
-            initPageNum = initPageNum + 1
-
-        return r
-        # 判断商品是否是当天预售商品
-
-    # 将商品加入收藏列表
-    def add_attention_list(self, itemId: str):
-        session = Session()
-        session.cookies.update(self.cookies)
-        session.headers.update(self.headers)
-        params = {
-            'jsv': '2.7.2',
-            'appKey': '34839810',
-            't': '',
-            'sign': '',
-            'v': '1.0',
-            'type': 'originaljson',
-            'accountSite': 'xianyu',
-            'dataType': 'json',
-            'timeout': '20000',
-            'needLoginPC': 'true',
-            'api': 'mtop.taobao.idle.collect.item',
-            'sessionOption': 'AutoLoginOnly',
-            'spm_cnt': 'a21ybx.item.0.0',
-            'spm_pre': 'a21ybx.search.searchFeedList.3.59ed3dc7BjQvEO',
-            'log_id': '59ed3dc7BjQvEO',
-        }
-
-        data = {
-            'data': '{"itemId":"' + itemId + '"}',
-        }
-        self.createRequestParams(params=params, data=data)
-        response = session.post(
-            'https://h5api.m.goofish.com/h5/mtop.taobao.idle.collect.item/1.0/',
-            params=params,
-            data=data,
-        )
-        if response.status_code == 200:
-            print(response.json())
-            print(f'商品编号：{itemId}加入收藏列表成功！')
+            response = session.post(
+                'https://h5api.m.goofish.com/h5/mtop.taobao.idle.collect.item/1.0/',
+                params=params,
+                data=data,
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('ret', [''])[0].startswith('SUCCESS'):
+                    print(f'商品编号：{itemId}加入收藏列表成功！')
+                else:
+                    print(f'商品编号：{itemId}加入收藏失败: {result}')
+            else:
+                print(f'商品编号：{itemId}加入收藏请求失败，状态码: {response.status_code}')
+                
+        except Exception as e:
+            print(f"添加商品到收藏列表出错: {e}")
 
     def send_post(self, params, data, url):
         session = Session()
