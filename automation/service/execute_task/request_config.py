@@ -1,6 +1,7 @@
 import json
 import time
 import pickle
+import os
 
 
 # import execjs
@@ -11,10 +12,17 @@ class RequestConfig:
     cookies: dict
 
     def __init__(self):
-        with open("./../../config/config.json", "r", encoding="utf-8") as file:
+        # 使用绝对路径
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        config_path = os.path.join(base_dir, "config", "config.json")
+        with open(config_path, "r", encoding="utf-8") as file:
             config = json.load(file)
         self.headers = config['headers']
         self.headers['sec-ch-ua'] = '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"'
+        
+        # 确保缓存目录存在
+        self.cache_dir = os.path.join(base_dir, "cache")
+        os.makedirs(self.cache_dir, exist_ok=True)
 
     def initCookie(self, driver) -> dict:
         cookies = {}
@@ -53,19 +61,28 @@ class RequestConfig:
             self.cache_cookies(driver=driver)
 
     # 缓存cookies避免下次程序重启需要重新登录
-    def cache_cookies(self, driver, file_path: str = './../../cache/cookies.pkl'):
+    def cache_cookies(self, driver, file_path=None):
+        if file_path is None:
+            file_path = os.path.join(self.cache_dir, 'cookies.pkl')
         with open(file_path, 'wb') as file:
             pickle.dump(driver.get_cookies(), file)
 
-    def load_cookies(self, driver, file_path: str = './../../cache/cookies.pkl'):
-        with open(file_path, 'rb') as file:
-            try:
-                cookies = pickle.load(file)
-            except EOFError:
-                return
-            for cookie in cookies:
-                driver.add_cookie(cookie)
-        driver.refresh()  # 刷新页面应用Cookies
+    def load_cookies(self, driver, file_path=None):
+        if file_path is None:
+            file_path = os.path.join(self.cache_dir, 'cookies.pkl')
+        try:
+            if os.path.exists(file_path):
+                with open(file_path, 'rb') as file:
+                    try:
+                        cookies = pickle.load(file)
+                        for cookie in cookies:
+                            driver.add_cookie(cookie)
+                        driver.refresh()  # 刷新页面应用Cookies
+                    except EOFError:
+                        return
+        except Exception as e:
+            print(f"加载Cookies失败: {e}")
+            return
 
     # 创建签名
     # @staticmethod

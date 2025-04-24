@@ -1,5 +1,6 @@
 import json
 import time
+import os
 from abc import abstractmethod, ABC
 from asyncio import Future
 from concurrent.futures import ThreadPoolExecutor
@@ -58,13 +59,24 @@ class XyApi(ABC):  # 定义接口（抽象基类）
     headers: dict
     rConfig: RequestConfig
     task: XyTask = XyTask()
+    
+    # 获取配置文件的绝对路径
+    @staticmethod
+    def get_config_path():
+        # 获取当前工作目录（项目根目录）
+        root_dir = os.getcwd()
+        config_path = os.path.join(root_dir, "automation", "config", "config.json")
+        print(f"配置文件路径: {config_path}")
+        return config_path
 
     @abstractmethod
     def config(self):
         pass
 
     def __init__(self, rConfig: RequestConfig):
-        with open("./../../config/config.json", "r", encoding="utf-8") as file:
+        config_path = self.get_config_path()
+        print(f"尝试读取配置文件：{config_path}")
+        with open(config_path, "r", encoding="utf-8") as file:
             config = json.load(file)
         self.headers = config['headers']
         self.headers['sec-ch-ua'] = '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"'
@@ -80,7 +92,8 @@ class SecKillApi(XyApi):
 
     def __init__(self, rConfig: RequestConfig):
         super().__init__(rConfig)
-        with open("./../../config/config.json", "r", encoding="utf-8") as file:
+        config_path = self.get_config_path()
+        with open(config_path, "r", encoding="utf-8") as file:
             config = json.load(file)
         self.apiConfig = config['apiConfig']['secKillConfig']
         self.session = Session()
@@ -172,7 +185,8 @@ class CollectApi(XyApi):
 
     def __init__(self, rConfig: RequestConfig):
         super().__init__(rConfig)
-        with open("./../../config/config.json", "r", encoding="utf-8") as file:
+        config_path = self.get_config_path()
+        with open(config_path, "r", encoding="utf-8") as file:
             configApi = json.load(file)
         self.apiConfig = configApi['apiConfig']['collectConfig']
         self.session = Session()
@@ -187,5 +201,6 @@ class CollectApi(XyApi):
         data: dict = {
             "data": json.dumps(self.apiConfig['data'])
         }
+        print("请求参数:", self.apiConfig['api'], params, data)
         return self.session.post(self.apiConfig['api'],
                                  params=self.rConfig.createRequestParams(params=params, data=data), data=data).json()
