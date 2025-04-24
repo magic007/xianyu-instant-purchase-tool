@@ -3,6 +3,7 @@ import os
 import json
 import re
 import time
+import threading
 from datetime import datetime, timedelta
 
 # 添加项目根目录到路径，以便导入其他模块
@@ -10,6 +11,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 
 from flask import Flask, render_template, request, jsonify
 from automation.service.auto_add_commodity.AutoAddCommodity import AutoAddCommodity
+from automation.service.execute_task.task import SecKillApi
+from automation.service.execute_task.request_config import RequestConfig
+from selenium import webdriver
 from requests import Session
 
 # 确保静态文件和模板路径正确
@@ -1065,6 +1069,258 @@ def get_locations():
         {"code": "441900", "name": "东莞"}
     ]
     return jsonify({"success": True, "locations": locations})
+
+@app.route('/trigger_single_seckill', methods=['POST'])
+def trigger_single_seckill():
+    """处理单个商品的秒杀任务请求"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"status": "error", "message": "请求中未包含有效数据"})
+        
+        item_id = data.get('item_id')
+        title = data.get('title')
+        
+        if not item_id:
+            return jsonify({"status": "error", "message": "请求中未包含商品ID"})
+        
+        app.logger.info(f"接收到秒杀请求: 商品ID={item_id}, 标题={title}")
+        
+        # 创建任务数据
+        task_item = {
+            "id": item_id,
+            "title": title or f"商品{item_id}"
+        }
+        
+        # 尝试使用无WebDriver的方式执行下单
+        try:
+            # 在后台线程中执行下单任务
+            thread = threading.Thread(
+                target=direct_seckill,
+                args=(item_id, title),
+                daemon=True
+            )
+            thread.start()
+            
+            return jsonify({
+                "status": "success",
+                "message": f"已启动商品 '{title}' 的秒杀任务！请在控制台查看进度。"
+            })
+        except Exception as inner_e:
+            app.logger.error(f"直接下单失败: {str(inner_e)}")
+            # 如果直接下单失败，提供一个链接让用户手动前往下单页面
+            buy_url = f"https://www.goofish.com/item.htm?id={item_id}"
+            return jsonify({
+                "status": "error",
+                "message": f"自动下单失败，请手动前往商品页面: {buy_url}",
+                "manual_url": buy_url
+            })
+    except Exception as e:
+        app.logger.error(f"启动秒杀任务时出错: {str(e)}")
+        import traceback
+        app.logger.error(traceback.format_exc())
+        return jsonify({
+            "status": "error",
+            "message": f"启动秒杀任务失败: {str(e)}"
+        })
+
+def direct_seckill(item_id, title):
+    """直接使用HTTP请求执行下单，不依赖WebDriver"""
+    try:
+        from automation.service.execute_task.request_config import RequestConfig
+        from automation.service.auto_add_commodity.AutoAddCommodity import AutoAddCommodity
+        
+        # 初始化请求配置
+        app.logger.info(f"开始对商品 '{title}' (ID: {item_id}) 执行直接下单")
+        
+        # 利用已有的AutoAddCommodity获取cookies和请求配置
+        auto_commodity = AutoAddCommodity()
+        r_config = RequestConfig()
+        r_config.cookies = auto_commodity.cookies
+        
+        # 使用Request库直接发送请求而不是通过WebDriver
+        import requests
+        session = requests.Session()
+        session.headers.update(auto_commodity.headers)
+        session.cookies.update(r_config.cookies)
+        
+        # 1. 首先获取订单渲染信息
+        params = {
+            'jsv': '2.7.2',
+            'appKey': '34839810',
+            'v': '7.0',
+            'type': 'json',
+            'accountSite': 'xianyu',
+            'dataType': 'json',
+            'timeout': '20000',
+            'api': 'mtop.taobao.idle.trade.order.render',
+            'valueType': 'string',
+            'sessionOption': 'AutoLoginOnly',
+            'spm_cnt': 'a21ybx.create-order.0.0',
+        }
+        
+        data = {
+            'data': f'{{"itemId":"{item_id}"}}'
+        }
+        
+        # 生成sign和时间戳
+        params = r_config.createRequestParams(params=params, data=data)
+        app.logger.info(f"获取订单渲染信息，参数: {params}")
+        
+        response = session.post(
+            'https://h5api.m.goofish.com/h5/mtop.taobao.idle.trade.order.render/7.0/',
+            params=params,
+            cookies=r_config.cookies,
+            headers=session.headers,
+            data=data,
+        )
+        
+        # 检查响应
+        response_json = response.json()
+        app.logger.info(f"订单渲染响应: {response_json.get('ret', ['未知错误'])[0]}")
+        
+        if response_json.get('ret', [''])[0] != 'SUCCESS::调用成功':
+            app.logger.error(f"获取订单信息失败: {response_json.get('ret')}")
+            raise Exception(f"获取订单信息失败: {response_json.get('ret', ['未知错误'])[0]}")
+        
+        if not response_json.get('data'):
+            app.logger.error("响应中没有商品数据")
+            raise Exception("响应中没有商品数据")
+        
+        r_data = response_json.get('data')
+        
+        # 检查是否能获取到秒杀时间
+        if not r_data.get('commonData'):
+            app.logger.error("无法获取商品通用数据")
+            raise Exception("无法获取商品通用数据")
+        
+        r_commonData = r_data.get('commonData')
+        
+        if not r_commonData.get('secKillStart'):
+            app.logger.info("该商品不是秒杀商品或秒杀时间未设置")
+            # 尝试直接下单
+            app.logger.info("尝试直接下单...")
+        else:
+            # 获取秒杀时间和商品详情
+            secKillStart = int(r_commonData.get('secKillStart'))
+            r_params_data = r_commonData.get('itemBuyInfo')[0]
+            
+            # 计算等待时间
+            now_ms = int(time.time() * 1000)
+            wait_time_ms = secKillStart - now_ms
+            
+            if wait_time_ms > 0:
+                wait_time_sec = wait_time_ms / 1000
+                app.logger.info(f"商品将在 {wait_time_sec:.2f} 秒后开始秒杀")
+                
+                if wait_time_sec > 60:
+                    app.logger.info(f"等待时间较长 ({wait_time_sec:.2f}秒)，将在适当时间前30秒开始准备")
+                    # 如果等待时间很长，先休眠一段时间
+                    sleep_time = min(wait_time_sec - 30, 3600)  # 最多睡眠1小时
+                    time.sleep(sleep_time)
+                    
+                # 再次检查等待时间
+                now_ms = int(time.time() * 1000)
+                wait_time_ms = secKillStart - now_ms
+                
+                if wait_time_ms > 0:
+                    app.logger.info(f"等待秒杀开始，剩余 {wait_time_ms/1000:.2f} 秒")
+                    time.sleep(max(0, wait_time_ms/1000))
+            
+            app.logger.info("准备发送下单请求")
+            
+            # 2. 发送下单请求
+            api = '/h5/mtop.taobao.idle.trade.order.create/5.0/'
+            order_params = {
+                'jsv': '2.7.2',
+                'appKey': '34839810',
+                'v': '5.0',
+                'type': 'json',
+                'accountSite': 'xianyu',
+                'dataType': 'json',
+                'timeout': '20000',
+                'api': 'mtop.taobao.idle.trade.order.create',
+                'valueType': 'string',
+                'sessionOption': 'AutoLoginOnly',
+                'spm_cnt': 'a21ybx.create-order.0.0',
+            }
+            
+            # 使用商品信息构建下单数据
+            try:
+                order_data = {"data": json.dumps({"params": [r_params_data or {"itemId": item_id}]})}
+            except:
+                # 如果出错，使用简化版本的数据
+                order_data = {
+                    "data": json.dumps({
+                        "params": [{
+                            "adjust": "true",
+                            "buyQuantity": "1",
+                            "changeMeanTimeItem": "false",
+                            "deliverId": "23425317326",
+                            "deliverType": "1",
+                            "disable": "false",
+                            "freeze": "none",
+                            "inventory": "1",
+                            "itemId": item_id,
+                            "mainItem": "true",
+                            "price": "10.00",
+                            "renderVersion": "DIALOG",
+                            "urlParams": {}
+                        }]
+                    })
+                }
+            
+            # 生成sign和时间戳
+            order_params = r_config.createRequestParams(params=order_params, data=order_data)
+            
+            # 发送最多15次请求
+            max_attempts = 15
+            success = False
+            
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    start_time = time.perf_counter()
+                    order_response = session.post(
+                        'https://h5api.m.goofish.com' + api,
+                        params=order_params,
+                        cookies=r_config.cookies,
+                        headers=session.headers,
+                        data=order_data,
+                        timeout=5  # 设置较短的超时时间
+                    )
+                    end_time = time.perf_counter()
+                    
+                    app.logger.info(f"下单请求 #{attempt} 耗时: {(end_time-start_time)*1000:.2f}ms")
+                    order_result = order_response.json()
+                    
+                    if order_result.get('ret', [''])[0] == 'SUCCESS::调用成功':
+                        app.logger.info(f"下单成功！响应: {order_result}")
+                        success = True
+                        break
+                    else:
+                        app.logger.warning(f"下单请求 #{attempt} 失败: {order_result.get('ret', ['未知错误'])[0]}")
+                        
+                        # 如果返回需要验证码等错误，记录下来但不重试
+                        if any(keyword in str(order_result) for keyword in ['验证', 'x5sec', '安全']):
+                            app.logger.error(f"需要验证码或安全验证，终止尝试: {order_result}")
+                            break
+                        
+                        # 短暂延迟后重试
+                        time.sleep(0.1)
+                except Exception as req_err:
+                    app.logger.error(f"下单请求 #{attempt} 异常: {str(req_err)}")
+                    time.sleep(0.2)
+                    
+            if success:
+                app.logger.info(f"商品 '{title}' 下单成功！")
+            else:
+                app.logger.error(f"商品 '{title}' 下单失败，请尝试手动下单")
+                buy_url = f"https://www.goofish.com/item.htm?id={item_id}"
+                app.logger.info(f"商品链接: {buy_url}")
+    except Exception as e:
+        app.logger.error(f"直接下单过程出错: {str(e)}")
+        import traceback
+        app.logger.error(traceback.format_exc())
 
 if __name__ == '__main__':
     # 使用8080端口避免与MacOS AirPlay冲突

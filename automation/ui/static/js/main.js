@@ -303,10 +303,19 @@ document.addEventListener('DOMContentLoaded', function() {
             // 设置立即下单按钮属性
             const buyNowButton = itemNode.querySelector('.buy-now-btn');
             if (item.itemId) {
-                // 构建购买URL - 使用商品详情页面
-                const buyUrl = `https://www.goofish.com/item.htm?id=${item.itemId}`;
-                buyNowButton.href = buyUrl;
-                buyNowButton.title = "立即下单购买";
+                // 新逻辑：设置按钮点击事件，调用后端接口
+                buyNowButton.removeAttribute('href'); // 移除链接属性
+                buyNowButton.title = "点击开始秒杀任务";
+                buyNowButton.dataset.itemId = item.itemId;
+                buyNowButton.dataset.title = item.title;
+                
+                // 添加点击事件监听器
+                buyNowButton.addEventListener('click', function() {
+                    const btn = this;
+                    const itemId = btn.dataset.itemId;
+                    const title = btn.dataset.title;
+                    triggerSeckill(itemId, title, btn);
+                });
             } else {
                 buyNowButton.style.display = 'none'; // 如果没有商品ID，隐藏下单按钮
             }
@@ -404,10 +413,19 @@ document.addEventListener('DOMContentLoaded', function() {
             // 设置表格视图中的立即下单按钮属性
             const tableBuyNowButton = tableRow.querySelector('.buy-now-btn');
             if (item.itemId) {
-                // 构建购买URL - 使用商品详情页面
-                const buyUrl = `https://www.goofish.com/item.htm?id=${item.itemId}`;
-                tableBuyNowButton.href = buyUrl;
-                tableBuyNowButton.title = "立即下单购买";
+                // 新逻辑：设置按钮点击事件，调用后端接口
+                tableBuyNowButton.removeAttribute('href'); // 移除链接属性
+                tableBuyNowButton.title = "点击开始秒杀任务";
+                tableBuyNowButton.dataset.itemId = item.itemId;
+                tableBuyNowButton.dataset.title = item.title;
+                
+                // 添加点击事件监听器
+                tableBuyNowButton.addEventListener('click', function() {
+                    const btn = this;
+                    const itemId = btn.dataset.itemId;
+                    const title = btn.dataset.title;
+                    triggerSeckill(itemId, title, btn);
+                });
             } else {
                 tableBuyNowButton.style.display = 'none'; // 如果没有商品ID，隐藏下单按钮
             }
@@ -555,5 +573,28 @@ document.addEventListener('DOMContentLoaded', function() {
         toast.querySelector('.btn-close').addEventListener('click', function() {
             toast.remove();
         });
+    }
+    
+    // 新增：秒杀下单函数
+    function triggerSeckill(itemId, title, buttonElement) {
+        if (!itemId) {
+            showToast('商品ID无效，无法跳转到下单页面', 'danger');
+            return;
+        }
+        
+        // 构建下单页面URL
+        const orderUrl = `https://www.goofish.com/create-order?itemId=${itemId}`;
+        
+        // 禁用按钮，防止重复点击
+        buttonElement.disabled = true;
+        buttonElement.textContent = '跳转中...';
+        
+        // 设置短暂延迟后跳转，给用户视觉反馈
+        setTimeout(() => {
+            window.open(orderUrl, '_blank');
+            // 恢复按钮状态
+            buttonElement.disabled = false;
+            buttonElement.textContent = '立即下单';
+        }, 300);
     }
 }); 
