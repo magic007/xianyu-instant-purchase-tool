@@ -1,0 +1,213 @@
+/* 全局样式 */
+body {
+    background-color: #f8f9fa;
+}
+
+h1 {
+    color: #007bff;
+}
+
+/* 搜索表单 */
+.card {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+/* 商品卡片样式 */
+.card-img-container {
+    height: 200px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f0f0f0;
+}
+
+.card-img-top {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform 0.3s ease;
+}
+
+.card:hover .card-img-top {
+    transform: scale(1.05);
+}
+
+.card-title {
+    height: 3em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.form-label {
+    font-weight: 500;
+}
+
+#searchResults {
+    min-height: 200px;
+}
+
+.item-price {
+    font-weight: bold;
+    color: #e83e8c;
+    font-size: 1.2rem;
+}
+
+/* 表格视图样式 */
+.table-img-cell {
+    width: 100px;
+    height: 100px;
+    padding: 5px !important;
+}
+
+.table-img {
+    width: 90px;
+    height: 90px;
+    object-fit: contain;
+    background-color: #f0f0f0;
+}
+
+#tableView .item-title {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.view-toggle {
+    text-align: right;
+}
+
+/* 空结果状态 */
+.empty-results {
+    text-align: center;
+    padding: 40px;
+    color: #6c757d;
+}
+
+/* 加载指示器 */
+#loadingIndicator {
+    padding: 40px;
+}
+
+/* Toast通知 */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1050;
+}
+
+.toast {
+    margin-bottom: 10px;
+}
+
+/* 响应式调整 */
+@media (max-width: 576px) {
+    .card-img-container {
+        height: 150px;
+    }
+    
+    #tableView {
+        font-size: 0.85rem;
+    }
+    
+    .table-img-cell {
+        width: 70px;
+        height: 70px;
+    }
+    
+    .table-img {
+        width: 60px;
+        height: 60px;
+    }
+}
+
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.card {
+    transition: all 0.3s ease;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+.item-details {
+    color: #6c757d;
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.card-body {
+    padding: 1.5rem;
+}
+
+.btn-primary {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.btn-primary:hover {
+    background-color: #0b5ed7;
+    border-color: #0a58ca;
+}
+
+.btn-danger {
+    background-color: #dc3545;
+    border-color: #dc3545;
+}
+
+.btn-danger:hover {
+    background-color: #bb2d3b;
+    border-color: #b02a37;
+}
+
+/* 高级搜索部分样式 */
+#advancedSearch {
+    margin-top: 1rem;
+    border: none;
+}
+
+#advancedSearch .card-body {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 1.25rem;
+}
+
+.form-select {
+    border-radius: 0.375rem;
+}
+
+.form-select:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* 加载指示器样式 */
+.spinner-border {
+    color: #0d6efd;
+    width: 3rem;
+    height: 3rem;
+} 

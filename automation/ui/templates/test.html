@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试页面 - 闲鱼秒拍工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #3498db;
+        }
+        .test-box {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>闲鱼秒拍工具 - 测试页面</h1>
+    
+    <div class="test-box">
+        <h2>基本页面加载测试</h2>
+        <p>如果您能看到这个页面，说明Flask应用已经正常运行，并且能够提供HTML页面。</p>
+        <p class="success">✓ 基本HTML页面加载成功</p>
+    </div>
+    
+    <div class="test-box">
+        <h2>CSS样式测试</h2>
+        <p>这个区域应该有边框、圆角和内边距，如果您能看到样式效果，说明CSS样式正常工作。</p>
+        <p class="success">✓ 内联CSS样式正常工作</p>
+    </div>
+    
+    <div class="test-box">
+        <h2>静态文件加载测试</h2>
+        <p>下面将尝试加载一个静态CSS文件：</p>
+        <div id="css-test-result">检查中...</div>
+        
+        <p>下面将尝试加载一个静态JS文件：</p>
+        <div id="js-test-result">检查中...</div>
+    </div>
+    
+    <div class="test-box">
+        <h2>返回主页</h2>
+        <p><a href="/">点击这里返回主页</a></p>
+    </div>
+    
+    <script>
+        // 测试CSS文件加载
+        function testCssFile() {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = '/static/css/style.css';
+            
+            link.onload = function() {
+                document.getElementById('css-test-result').innerHTML = 
+                    '<span class="success">✓ 静态CSS文件加载成功</span>';
+            };
+            
+            link.onerror = function() {
+                document.getElementById('css-test-result').innerHTML = 
+                    '<span class="error">✗ 静态CSS文件加载失败 (路径: ' + link.href + ')</span>';
+            };
+            
+            document.head.appendChild(link);
+        }
+        
+        // 测试JS文件加载
+        function testJsFile() {
+            const script = document.createElement('script');
+            script.src = '/static/js/main.js';
+            
+            script.onload = function() {
+                document.getElementById('js-test-result').innerHTML = 
+                    '<span class="success">✓ 静态JS文件加载成功</span>';
+            };
+            
+            script.onerror = function() {
+                document.getElementById('js-test-result').innerHTML = 
+                    '<span class="error">✗ 静态JS文件加载失败 (路径: ' + script.src + ')</span>';
+            };
+            
+            document.body.appendChild(script);
+        }
+        
+        // 运行测试
+        window.onload = function() {
+            testCssFile();
+            testJsFile();
+        };
+    </script>
+</body>
+</html> 

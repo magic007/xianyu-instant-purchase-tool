@@ -14,6 +14,7 @@
 4. **日期识别**：从商品标题中自动识别秒杀时间，并按时间进行分组
 5. **自动秒杀**：在指定时间自动进行秒杀操作，提高抢购成功率
 6. **智能重试**：遇到网络问题时自动重试，保证操作的可靠性
+7. **可视化搜索界面**：提供Web界面，可以直观地搜索商品，支持价格筛选和结果展示
 
 ## 环境准备
 
@@ -25,7 +26,7 @@
 ## 安装依赖
 
 ```bash
-pip install selenium
+pip install selenium flask
 ```
 
 ## 目录结构
@@ -42,6 +43,14 @@ automation/
 │       ├── manage.py    # 任务管理类
 │       ├── task.py      # 任务定义类
 │       └── request_config.py # 请求配置类
+├── ui/                  # Web界面模块
+│   ├── app.py           # Flask应用主文件
+│   ├── run.py           # 启动脚本
+│   ├── templates/       # HTML模板
+│   │   └── index.html   # 主页模板
+│   └── static/          # 静态资源
+│       ├── css/         # 样式文件
+│       └── js/          # JavaScript文件
 └── utool/               # 工具类目录
     └── sokcet_connect.py # 网络连接工具
 
@@ -76,9 +85,24 @@ USE_LOCAL_DRIVER = False  # 设置为False使用自动下载
 
 ## 运行方式
 
+### 命令行方式运行
+
 ```bash
 python -m automation.service.execute_task.execute
 ```
+
+### Web界面方式运行
+
+```bash
+python -m automation.ui.run
+```
+
+运行后会自动在浏览器中打开操作界面，您可以在界面上:
+1. 输入搜索关键词
+2. 设置价格筛选范围
+3. 选择是否只搜索关注的人发布的商品
+4. 查看搜索结果并将商品添加到收藏列表
+5. 清空收藏列表
 
 ## 运行流程
 
@@ -192,6 +216,30 @@ WebDriverWait(driver, 20)  # 增加等待时间到20秒
 time.sleep(5)  # 添加5秒延迟
 ```
 
+### 6. Web界面问题
+
+如果在使用Web界面时遇到问题：
+
+1. 确保已安装Flask：
+```bash
+pip install flask
+```
+
+2. 如果界面无法加载，检查Flask是否正在运行：
+```
+正在启动闲鱼秒拍搜索工具...
+应用将在默认浏览器中打开
+ * Serving Flask app 'app' (lazy loading)
+ * Environment: production
+ * Debug mode: on
+ * Running on http://127.0.0.1:5000
+```
+
+3. 如果显示端口已被占用，可以修改`run.py`中的端口号：
+```python
+app.run(debug=True, port=5001)  # 修改为其他端口
+```
+
 ## 技术实现
 
 ### 1. 浏览器自动化
@@ -214,6 +262,10 @@ time.sleep(5)  # 添加5秒延迟
 
 全面的异常捕获和处理机制，确保程序在各种异常情况下都能保持运行，增强稳定性。
 
+### 6. Web界面
+
+使用Flask框架提供Web界面，结合Bootstrap实现响应式布局，提供直观的用户体验。
+
 ## 更新日志
 
 ### 2024-10-31
@@ -224,6 +276,13 @@ time.sleep(5)  # 添加5秒延迟
 - 改进了元素定位方式，提高了页面识别的稳定性
 - 添加了异常捕获和错误处理，防止程序意外退出
 - 增加了Chrome浏览器启动参数，提高稳定性
+
+### 2024-11-01
+- 添加了基于Web的UI界面，支持可视化搜索和筛选
+- 增加了价格筛选功能
+- 改进了搜索结果的展示方式
+- 添加了商品批量添加到收藏列表的功能
+- 优化了用户体验和界面设计
 
 ## 注意事项
 

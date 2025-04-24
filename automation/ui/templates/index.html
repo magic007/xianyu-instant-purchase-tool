@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>闲鱼秒拍工具</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="text-center mb-4">闲鱼秒拍搜索工具</h1>
+        
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">搜索商品</h5>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#advancedSearch" aria-expanded="false" aria-controls="advancedSearch">
+                        <i class="bi bi-sliders"></i> 高级搜索
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <form id="searchForm">
+                    <div class="mb-3">
+                        <label for="searchName" class="form-label">搜索关键词</label>
+                        <input type="text" class="form-control" id="searchName" name="search_name" value="#卖闲置2025年3月29日" required>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col">
+                            <label for="minPrice" class="form-label">最低价格</label>
+                            <input type="number" class="form-control" id="minPrice" name="min_price" value="1" min="0">
+                        </div>
+                        <div class="col">
+                            <label for="maxPrice" class="form-label">最高价格</label>
+                            <input type="number" class="form-control" id="maxPrice" name="max_price" value="99" min="1">
+                        </div>
+                    </div>
+                    
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="isAttention" name="is_attention">
+                        <label class="form-check-label" for="isAttention">
+                            只收藏关注的人发布的商品
+                        </label>
+                    </div>
+                    
+                    <!-- 高级搜索选项 -->
+                    <div class="collapse mb-4" id="advancedSearch">
+                        <div class="card card-body bg-light">
+                            <h6 class="card-subtitle mb-3">高级搜索选项</h6>
+                            
+                            <div class="mb-3">
+                                <label for="location" class="form-label">地区</label>
+                                <select class="form-select" id="location" name="location">
+                                    <option value="">全部地区</option>
+                                    <!-- 地区列表将通过JS动态加载 -->
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="postTime" class="form-label">发布时间</label>
+                                <select class="form-select" id="postTime" name="post_time">
+                                    <option value="">不限时间</option>
+                                    <option value="today">今天发布</option>
+                                    <option value="3days">3天内</option>
+                                    <option value="7days">7天内</option>
+                                    <option value="14days">14天内</option>
+                                    <option value="30days">30天内</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="condition" class="form-label">商品成色</label>
+                                <select class="form-select" id="condition" name="condition">
+                                    <option value="">全部成色</option>
+                                    <option value="new">全新</option>
+                                    <option value="like_new">几乎全新</option>
+                                    <option value="good">二手良好</option>
+                                    <option value="fair">二手一般</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="shippingOption" class="form-label">运费方式</label>
+                                <select class="form-select" id="shippingOption" name="shipping_option">
+                                    <option value="">全部</option>
+                                    <option value="free">卖家包邮</option>
+                                    <option value="buyer_pays">买家付邮费</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="sortType" class="form-label">排序方式</label>
+                                <select class="form-select" id="sortType" name="sort_type">
+                                    <option value="default">默认排序</option>
+                                    <option value="price_asc">价格从低到高</option>
+                                    <option value="price_desc">价格从高到低</option>
+                                    <option value="time_desc">最新发布</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary" id="searchButton">
+                            <i class="bi bi-search"></i> 搜索
+                        </button>
+                        <button type="button" class="btn btn-danger" id="clearCollections">
+                            <i class="bi bi-trash"></i> 清空收藏列表
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="mt-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5>搜索结果</h5>
+                <div id="resultStats"></div>
+            </div>
+            
+            <!-- 切换视图按钮 -->
+            <div class="view-toggle mb-3">
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-primary active" id="gridViewBtn">
+                        <i class="bi bi-grid"></i> 卡片视图
+                    </button>
+                    <button type="button" class="btn btn-outline-primary" id="tableViewBtn">
+                        <i class="bi bi-table"></i> 表格视图
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 卡片视图 (默认) -->
+            <div id="gridView">
+                <div id="searchResults" class="row g-4"></div>
+            </div>
+            
+            <!-- 表格视图 -->
+            <div id="tableView" style="display: none;">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>商品图片</th>
+                                <th>商品标题</th>
+                                <th>价格</th>
+                                <th>发布时间</th>
+                                <th>位置</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="searchResultsTable"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div id="loadingIndicator" class="text-center d-none mt-4">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <p class="mt-2">正在搜索商品，请稍候...</p>
+            </div>
+            
+            <div id="errorMessage" class="alert alert-danger d-none mt-4"></div>
+        </div>
+    </div>
+    
+    <!-- 商品卡片模板 -->
+    <template id="itemTemplate">
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-img-container">
+                    <img src="" class="card-img-top item-image" alt="商品图片">
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title item-title"></h5>
+                    <p class="card-text item-price"></p>
+                    <div class="item-details mb-2">
+                        <small class="text-muted item-location"><i class="bi bi-geo-alt"></i> </small>
+                        <small class="text-muted item-post-time ms-2"><i class="bi bi-clock"></i> </small>
+                    </div>
+                    <div class="d-grid">
+                        <button class="btn btn-sm btn-primary add-collection" data-item-id="">加入收藏</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+    
+    <!-- 表格行模板 -->
+    <template id="tableRowTemplate">
+        <tr>
+            <td class="table-img-cell"><img src="" class="table-img item-image" alt="商品图片"></td>
+            <td class="item-title"></td>
+            <td class="item-price"></td>
+            <td class="item-post-time"></td>
+            <td class="item-location"></td>
+            <td><button class="btn btn-sm btn-primary add-collection" data-item-id="">加入收藏</button></td>
+        </tr>
+    </template>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html> 
