@@ -1,12 +1,16 @@
 import pickle
 import time
+import os
+import sys
 from requests import Session
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 
 
 class AutoAddCommodity:
@@ -136,53 +140,139 @@ class AutoAddCommodity:
         chrome_options = Options()
         # 设置为浏览器持久化
         chrome_options.add_experimental_option("detach", True)
-        chrome_options = webdriver.ChromeOptions()
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option("useAutomationExtension", False)
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        with webdriver.Chrome(options=chrome_options) as driver:
+        
+        # 添加更多选项以提高稳定性
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--remote-debugging-port=9222")
+        
+        # 使用本地ChromeDriver
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
+        driver_path = os.path.join(project_root, "drivers", "chromedriver")
+        service = Service(executable_path=driver_path)
+        
+        try:
+            driver = webdriver.Chrome(service=service, options=chrome_options)
             driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")  # 进一步隐藏
-            wait = WebDriverWait(driver, 10)
             driver.get("https://www.goofish.com")
-            # 根据请cookie判断是否是登录状态
+            
+            # 根据cookie判断是否是登录状态
             self.isLogin(driver)
+            
+            # 更健壮的元素检测
             try:
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.XPATH, '//div[contains(text(), "一只九尾猫")]')))
-                print("已经登录")
+                # 尝试查找登录状态的用户名（这里可能需要根据实际页面元素调整）
+                print("正在检查登录状态...")
+                try:
+                    WebDriverWait(driver, 15).until(
+                        EC.presence_of_element_located((By.XPATH, '//*[contains(text(), "一只九尾猫") or contains(@class, "user-name")]')))
+                    print("已经登录")
+                    self.initCookie(driver=driver)
+                except (TimeoutException, NoSuchElementException):
+                    # 尝试点击登录按钮
+                    print("未检测到登录状态，尝试登录...")
+                    login_btn = WebDriverWait(driver, 15).until(
+                        EC.element_to_be_clickable((By.XPATH, '//*[contains(text(), "登录") or contains(@class, "login")]')))
+                    login_btn.click()
+                    
+                    # 等待登录框加载并切换
+                    try:
+                        WebDriverWait(driver, 15).until(EC.frame_to_be_available_and_switch_to_it((By.ID, "alibaba-login-box")))
+                        # 尝试点击快速进入按钮
+                        WebDriverWait(driver, 10).until(
+                            EC.element_to_be_clickable((By.XPATH, '//button[contains(text(), "快速进入")]'))).click()
+                    except (TimeoutException, NoSuchElementException) as e:
+                        print(f"登录界面元素未找到: {e}")
+                        print("请手动完成登录过程...")
+                        input("完成登录后按回车继续...")
+                        
+                    # 切回主框架
+                    driver.switch_to.default_content()
+                    self.initCookie(driver=driver)
+                
+                self.driver = driver
+                
+            except Exception as e:
+                print(f"登录过程出错: {e}")
+                input("请手动完成登录，操作完成后按回车继续...")
+                driver.get("https://www.goofish.com")
                 self.initCookie(driver=driver)
-            except:
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.XPATH, '//div[contains(text(), "登录")]'))).click()
-                WebDriverWait(driver, 10).until(EC.frame_to_be_available_and_switch_to_it((By.ID, "alibaba-login-box")))
-                driver.find_element(By.XPATH, '//button[contains(text(), "快速进入")]').click()
-                self.initCookie(driver=driver)
-            self.driver = driver
+                self.driver = driver
+                
+        except WebDriverException as e:
+            print(f"Chrome浏览器启动失败: {e}")
+            print("可能原因:")
+            print("1. ChromeDriver版本与Chrome浏览器版本不匹配")
+            print("2. ChromeDriver没有正确的执行权限")
+            print("请确保使用正确版本的ChromeDriver，并确保它有执行权限(chmod +x)")
+            raise
 
     def isLogin(self, driver):
-        self.load_cookies(driver=driver)
-        if len(self.initCookie(driver)) < 8:
+        try:
+            self.load_cookies(driver=driver)
+            cookies = self.initCookie(driver)
+            if len(cookies) < 8:
+                print("Cookie无效或已过期，需要重新登录")
+                driver.get("https://www.goofish.com/login?spm=a21ybx.seo.sitemap.1")
+                input("请登录后按回车\n")
+                driver.get("https://www.goofish.com")
+                # 重新加载登录后的Cookie
+                self.initCookie(driver)
+                self.cache_cookies(driver=driver)
+                print("登录成功，Cookie已保存")
+            else:
+                print("Cookie有效，已成功登录")
+        except Exception as e:
+            print(f"登录过程发生错误: {e}")
             driver.get("https://www.goofish.com/login?spm=a21ybx.seo.sitemap.1")
             input("请登录后按回车\n")
             driver.get("https://www.goofish.com")
-            self.isLogin(driver)
-        else:
-            print("登录成功了！")
+            self.initCookie(driver)
             self.cache_cookies(driver=driver)
 
-    def cache_cookies(self, driver, file_path: str = './../../cache/cookies.pkl'):
-        with open(file_path, 'wb') as file:
-            pickle.dump(driver.get_cookies(), file)
+    def cache_cookies(self, driver, file_path: str = None):
+        if file_path is None:
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
+            file_path = os.path.join(project_root, "automation", "cache", "cookies.pkl")
+            
+        # 确保缓存目录存在
+        cache_dir = os.path.dirname(file_path)
+        if not os.path.exists(cache_dir):
+            print(f"创建缓存目录: {cache_dir}")
+            os.makedirs(cache_dir, exist_ok=True)
+            
+        try:
+            with open(file_path, 'wb') as file:
+                pickle.dump(driver.get_cookies(), file)
+            print(f"Cookie已保存到: {file_path}")
+        except Exception as e:
+            print(f"保存Cookie失败: {e}")
 
-    def load_cookies(self, driver, file_path: str = './../../cache/cookies.pkl'):
-        with open(file_path, 'rb') as file:
-            try:
-                cookies = pickle.load(file)
-            except EOFError:
-                return
-            for cookie in cookies:
-                driver.add_cookie(cookie)
-        driver.refresh()  # 刷新页面应用Cookies
+    def load_cookies(self, driver, file_path: str = None):
+        if file_path is None:
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
+            file_path = os.path.join(project_root, "automation", "cache", "cookies.pkl")
+            
+        if not os.path.exists(file_path):
+            print(f"Cookie文件不存在: {file_path}")
+            return
+            
+        try:
+            with open(file_path, 'rb') as file:
+                try:
+                    cookies = pickle.load(file)
+                except EOFError:
+                    print("Cookie文件为空或已损坏")
+                    return
+                for cookie in cookies:
+                    driver.add_cookie(cookie)
+            driver.refresh()  # 刷新页面应用Cookies
+        except Exception as e:
+            print(f"加载Cookie失败: {e}")
 
     def initCookie(self, driver) -> dict:
         cookies = {}
@@ -375,25 +465,36 @@ class AutoAddCommodity:
                 delete(item['id'])
 
 
-print('---脚本开始运行---')
-startTime = time.time()
-auto = AutoAddCommodity()
-option = input(
-    '请选择操作:\n1清空收藏\n2.搜寻今日秒拍商品并加入收藏\n3.搜寻商品，但只加入关注的up商品\n4.根据名称搜索\n输入错误时不做任何操作退出不做任何操作\n')
-if option == '1':
-    auto.delete_attention_list()
-elif option == '2':
-    searchName = '#卖闲置' + str(
-        str(f"{time.strftime('%Y')}年{time.strftime('%m').lstrip('0')}月{time.strftime('%d').lstrip('0')}日"))
-    print(f' 共新增商品：{len(auto.get_search_list(searchName=searchName, isAttention=False))} 条')
-    print(f'默认搜索商品名称：{searchName}')
-elif option == '3':
-    searchName = '#卖闲置' + str(
-        str(f"{time.strftime('%Y')}年{time.strftime('%m').lstrip('0')}月{time.strftime('%d').lstrip('0')}日"))
-    print(f' 共新增商品：{len(auto.get_search_list(searchName=searchName, isAttention=True))} 条')
-    print(f'默认搜索商品名称：{searchName}')
-elif option == '4':
-    searchName = str(input('输入要搜寻的商品名称\n'))
-    print(f' 共新增商品：{len(auto.get_search_list(searchName=searchName, isAttention=False))} 条')
-endTime = time.time()
-print(f'---脚本运行结束运行  耗时{(endTime - startTime)} 秒---')
+if __name__ == "__main__":
+    print('---脚本开始运行---')
+    startTime = time.time()
+    try:
+        auto = AutoAddCommodity()
+        option = input(
+            '请选择操作:\n1.清空收藏\n2.搜寻今日秒拍商品并加入收藏\n3.搜寻商品，但只加入关注的up商品\n4.根据名称搜索\n输入错误时不做任何操作退出\n')
+        if option == '1':
+            auto.delete_attention_list()
+        elif option == '2':
+            searchName = '#卖闲置' + str(
+                str(f"{time.strftime('%Y')}年{time.strftime('%m').lstrip('0')}月{time.strftime('%d').lstrip('0')}日"))
+            print(f'默认搜索商品名称：{searchName}')
+            print(f' 共新增商品：{len(auto.get_search_list(searchName=searchName, isAttention=False))} 条')
+        elif option == '3':
+            searchName = '#卖闲置' + str(
+                str(f"{time.strftime('%Y')}年{time.strftime('%m').lstrip('0')}月{time.strftime('%d').lstrip('0')}日"))
+            print(f'默认搜索商品名称：{searchName}')
+            print(f' 共新增商品：{len(auto.get_search_list(searchName=searchName, isAttention=True))} 条')
+        elif option == '4':
+            searchName = str(input('输入要搜寻的商品名称\n'))
+            print(f' 共新增商品：{len(auto.get_search_list(searchName=searchName, isAttention=False))} 条')
+        endTime = time.time()
+        print(f'---脚本运行结束运行  耗时{(endTime - startTime)} 秒---')
+    except KeyboardInterrupt:
+        print("\n程序被用户中断")
+        sys.exit(0)
+    except Exception as e:
+        print(f"脚本运行出错: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        print('---脚本执行结束---')
