@@ -300,6 +300,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 chatButton.style.display = 'none'; // 如果没有商品ID，隐藏聊天按钮
             }
             
+            // 设置立即下单按钮属性
+            const buyNowButton = itemNode.querySelector('.buy-now-btn');
+            if (item.itemId) {
+                // 构建购买URL - 使用商品详情页面
+                const buyUrl = `https://www.goofish.com/item.htm?id=${item.itemId}`;
+                buyNowButton.href = buyUrl;
+                buyNowButton.title = "立即下单购买";
+            } else {
+                buyNowButton.style.display = 'none'; // 如果没有商品ID，隐藏下单按钮
+            }
+            
             // 添加到结果区域
             searchResults.appendChild(itemNode);
             
@@ -388,6 +399,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 tableChatButton.title = "与卖家聊天";
             } else {
                 tableChatButton.style.display = 'none'; // 如果没有商品ID，隐藏聊天按钮
+            }
+            
+            // 设置表格视图中的立即下单按钮属性
+            const tableBuyNowButton = tableRow.querySelector('.buy-now-btn');
+            if (item.itemId) {
+                // 构建购买URL - 使用商品详情页面
+                const buyUrl = `https://www.goofish.com/item.htm?id=${item.itemId}`;
+                tableBuyNowButton.href = buyUrl;
+                tableBuyNowButton.title = "立即下单购买";
+            } else {
+                tableBuyNowButton.style.display = 'none'; // 如果没有商品ID，隐藏下单按钮
             }
             
             // 添加到表格结果区域
