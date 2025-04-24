@@ -39,11 +39,34 @@
                         </div>
                     </div>
                     
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="isAttention" name="is_attention">
-                        <label class="form-check-label" for="isAttention">
-                            只收藏关注的人发布的商品
-                        </label>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="isAttention" name="is_attention">
+                                <label class="form-check-label" for="isAttention">
+                                    <span class="badge bg-info text-white"><i class="bi bi-heart"></i> 只收藏关注的人发布的商品</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3 border-top pt-3">
+                        <div class="row align-items-center">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="autoRefresh" name="auto_refresh">
+                                    <label class="form-check-label" for="autoRefresh">
+                                        自动刷新结果
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="refreshInterval" name="refresh_interval" value="30" min="5" max="600" step="1">
+                                    <span class="input-group-text">秒</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
                     <!-- 高级搜索选项 -->
@@ -182,8 +205,11 @@
                         <small class="text-muted item-location"><i class="bi bi-geo-alt"></i> </small>
                         <small class="text-muted item-post-time ms-2"><i class="bi bi-clock"></i> </small>
                     </div>
-                    <div class="d-grid">
-                        <button class="btn btn-sm btn-primary add-collection" data-item-id="">加入收藏</button>
+                    <div class="d-grid gap-2">
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-primary add-collection" data-item-id="">加入收藏</button>
+                            <a href="#" target="_blank" class="btn btn-sm btn-outline-secondary chat-btn"><i class="bi bi-chat-dots"></i> 聊天</a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -198,7 +224,12 @@
             <td class="item-price"></td>
             <td class="item-post-time"></td>
             <td class="item-location"></td>
-            <td><button class="btn btn-sm btn-primary add-collection" data-item-id="">加入收藏</button></td>
+            <td>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button class="btn btn-sm btn-primary add-collection" data-item-id="">加入收藏</button>
+                    <a href="#" target="_blank" class="btn btn-sm btn-outline-secondary chat-btn"><i class="bi bi-chat-dots"></i></a>
+                </div>
+            </td>
         </tr>
     </template>
     

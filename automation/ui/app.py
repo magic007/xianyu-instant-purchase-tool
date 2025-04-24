@@ -278,216 +278,231 @@ def advanced_search():
         if auto_add_commodity is None:
             auto_add_commodity = AutoAddCommodity()
         
-        # 获取基本搜索参数
-        search_name = request.form.get('search_name', '')
+        # 获取搜索参数
+        keyword = request.form.get('search_name', '#卖闲置2025年3月29日')
         min_price = request.form.get('min_price', '0')
-        max_price = request.form.get('max_price', '9999999')
+        max_price = request.form.get('max_price', '99999999')
+        price_range = f'{min_price},{max_price}'
+        
+        is_attention = request.form.get('is_attention', 'false').lower() == 'true'
         
         # 获取高级搜索参数
-        location = request.form.get('location', '')  # 地区
-        post_time = request.form.get('post_time', '')  # 发布时间
-        sort_type = request.form.get('sort_type', 'default')  # 排序方式
-        condition = request.form.get('condition', '')  # 商品成色
-        shipping_option = request.form.get('shipping_option', '')  # 运费方式
-        is_attention = request.form.get('is_attention', 'false').lower() == 'true'  # 是否只看关注的人
+        location = request.form.get('location', '')
+        post_time = request.form.get('post_time', '')
+        condition = request.form.get('condition', '')
+        shipping_option = request.form.get('shipping_option', '')
+        sort_type = request.form.get('sort_type', 'default')
         
-        # 构建高级搜索过滤条件
-        filter_values = []
+        # 构建过滤条件字符串
+        filters = f"priceRange:{price_range};"
         
-        # 添加价格范围
-        if min_price or max_price:
-            filter_values.append(f"priceRange:{min_price},{max_price}")
-        
-        # 添加地区过滤
         if location:
-            filter_values.append(f"location:{location}")
+            filters += f"location:{location};"
         
-        # 添加发布时间过滤
         if post_time:
-            filter_values.append(f"postTime:{post_time}")
+            # 处理发布时间筛选
+            if post_time == 'today':
+                filters += "postDays:1;"
+            elif post_time == '3days':
+                filters += "postDays:3;"
+            elif post_time == '7days':
+                filters += "postDays:7;"
+            elif post_time == '14days':
+                filters += "postDays:14;"
+            elif post_time == '30days':
+                filters += "postDays:30;"
         
-        # 添加商品成色过滤
         if condition:
-            filter_values.append(f"itemCondition:{condition}")
+            # 处理商品成色筛选
+            if condition == 'new':
+                filters += "stuffStatus:99;"
+            elif condition == 'like_new':
+                filters += "stuffStatus:75;"
+            elif condition == 'good':
+                filters += "stuffStatus:50;"
+            elif condition == 'fair':
+                filters += "stuffStatus:25;"
         
-        # 添加运费方式过滤
         if shipping_option:
-            filter_values.append(f"shippingOption:{shipping_option}")
+            # 处理运费方式筛选
+            if shipping_option == 'free':
+                filters += "freightPayer:1;"
+            elif shipping_option == 'buyer_pays':
+                filters += "freightPayer:2;"
         
-        # 合并过滤条件
-        filter_str = ";".join(filter_values)
+        print(f"开始高级搜索: {keyword}, 过滤条件: {filters}, 排序方式: {sort_type}")
         
-        # 调用高级搜索方法
-        result = advanced_search_items(
+        # 使用普通搜索函数进行高级搜索，确保包含所有字段
+        result = search_items_simple(
             auto_add_commodity=auto_add_commodity,
-            keyword=search_name,
-            filters=filter_str,
-            sort_type=sort_type,
-            is_attention=is_attention
+            keyword=keyword,
+            price_range=price_range,
+            is_attention=is_attention,
+            page_size=50,
+            page_number=1
         )
         
-        # 打印第一个结果的结构用于调试
+        # 如果需要排序，在Python端进行排序
+        if sort_type != 'default' and result:
+            if sort_type == 'price_asc':
+                # 价格从低到高排序
+                result.sort(key=lambda x: float(x.get('processed_price', '0').replace('¥', '').replace(',', '').strip() or '0'), reverse=False)
+            elif sort_type == 'price_desc':
+                # 价格从高到低排序
+                result.sort(key=lambda x: float(x.get('processed_price', '0').replace('¥', '').replace(',', '').strip() or '0'), reverse=True)
+            elif sort_type == 'time_desc':
+                # 按发布时间最新排序 - 由于发布时间可能是文本格式，需要特殊处理
+                result.sort(key=lambda x: x.get('processed_post_time', ''), reverse=True)
+        
         if result and len(result) > 0:
             print("高级搜索 - 第一个结果的结构详细情况:")
             print(json.dumps(result[0], indent=2, ensure_ascii=False)[:1000] + "...")
         
-        # 处理结果数据
-        items = []
+        # 应用筛选条件
+        filtered_results = []
         for item in result:
+            # 分别检查每个筛选条件
+            include_item = True
+            
+            ex_content = item.get("exContent", {})
+            
+            # 地区筛选
+            if location and include_item:
+                item_location = get_location(item)
+                if location not in item_location:
+                    include_item = False
+            
+            # 发布时间筛选
+            if post_time and include_item:
+                # 获取发布时间
+                post_time_str = item.get("processed_post_time", "")
+                
+                # 根据发布时间筛选
+                if post_time == 'today':
+                    if ('小时前' not in post_time_str and '分钟前' not in post_time_str and 
+                        '天内上新' not in post_time_str and '今日上新' not in post_time_str):
+                        include_item = False
+                elif post_time == '3days':
+                    if '天前' in post_time_str:
+                        days = int(post_time_str.split('天前')[0])
+                        if days > 3:
+                            include_item = False
+                    elif '天内上新' in post_time_str:
+                        days = int(post_time_str.split('天内')[0])
+                        if days > 3:
+                            include_item = False
+                elif post_time == '7days':
+                    if '天前' in post_time_str:
+                        days = int(post_time_str.split('天前')[0])
+                        if days > 7:
+                            include_item = False
+                    elif '天内上新' in post_time_str:
+                        days = int(post_time_str.split('天内')[0])
+                        if days > 7:
+                            include_item = False
+                elif post_time == '14days':
+                    if '天前' in post_time_str:
+                        days = int(post_time_str.split('天前')[0])
+                        if days > 14:
+                            include_item = False
+                    elif '天内上新' in post_time_str:
+                        days = int(post_time_str.split('天内')[0])
+                        if days > 14:
+                            include_item = False
+                elif post_time == '30days':
+                    if '天前' in post_time_str:
+                        days = int(post_time_str.split('天前')[0])
+                        if days > 30:
+                            include_item = False
+                    elif '天内上新' in post_time_str:
+                        days = int(post_time_str.split('天内')[0])
+                        if days > 30:
+                            include_item = False
+            
+            # 商品成色筛选
+            if condition and include_item:
+                # 从fishTags或其他地方提取成色信息
+                fish_tags = ex_content.get("fishTags", {})
+                tags_content = str(fish_tags)
+                
+                if condition == 'new' and '全新' not in tags_content:
+                    include_item = False
+                elif condition == 'like_new' and '几乎全新' not in tags_content and '9成新' not in tags_content:
+                    include_item = False
+                elif condition == 'good' and '良好' not in tags_content and not any(f'{i}成新' in tags_content for i in range(5, 9)):
+                    include_item = False
+                elif condition == 'fair' and '一般' not in tags_content and not any(f'{i}成新' in tags_content for i in range(1, 5)):
+                    include_item = False
+            
+            # 运费方式筛选
+            if shipping_option and include_item:
+                # 提取运费信息
+                fish_tags = ex_content.get("fishTags", {})
+                tags_content = str(fish_tags)
+                
+                if shipping_option == 'free' and '包邮' not in tags_content and 'freeShippingIcon' not in tags_content:
+                    include_item = False
+                elif shipping_option == 'buyer_pays' and ('包邮' in tags_content or 'freeShippingIcon' in tags_content):
+                    include_item = False
+            
+            # 如果通过所有筛选，则添加到结果中
+            if include_item:
+                filtered_results.append(item)
+        
+        # 处理结果数据，提取需要在前端显示的信息
+        items = []
+        for item in filtered_results:
             try:
-                # 提取商品标题 - 直接从主数据中获取
+                # 提取商品标题
                 title = item.get("title", "")
                 if not title or not title.strip():
                     # 尝试从exContent中获取
                     ex_content = item.get("exContent", {})
                     title = ex_content.get("title", "未知商品")
                 
-                # 提取商品价格
-                price_text = ""
-                # 尝试从clickParam中获取价格
-                if "clickParam" in item and isinstance(item["clickParam"], dict) and "args" in item["clickParam"]:
-                    click_args = item["clickParam"]["args"]
-                    if "price" in click_args:
-                        price_text = click_args["price"]
-                
-                # 如果clickParam中没有价格，尝试其他方法获取
-                if not price_text:
-                    if "price" in item and isinstance(item["price"], list):
-                        # 遍历价格列表，找到整数部分
-                        for price_part in item["price"]:
-                            if price_part.get("type") == "integer":
-                                price_text = price_part.get("text", "")
-                                break
-                    else:
-                        # 尝试从detailParams中获取价格
-                        detail_params = item.get("detailParams", {})
-                        if "soldPrice" in detail_params:
-                            price_text = detail_params["soldPrice"]
-                        elif "price" in item and isinstance(item["price"], dict):
-                            price_text = item["price"].get("priceDesc", "")
-                        
-                    # 如果还是没有价格，尝试从exContent获取
-                    if not price_text:
-                        ex_content = item.get("exContent", {})
-                        price_text = ex_content.get("priceText", "")
+                # 提取商品价格 - 使用处理过的价格
+                price_text = item.get("processed_price", "未知价格")
                 
                 # 添加货币符号
                 if price_text and not price_text.startswith("¥"):
                     price_text = f"¥{price_text}"
-                elif not price_text:
-                    price_text = "未知价格"
                 
-                # 提取图片URL
-                image_url = ""
+                # 提取图片URL - 使用处理过的图片URL
+                image_url = item.get("processed_image", "")
                 
-                # 尝试从picUrl直接获取
-                image_url = item.get("picUrl", "")
+                # 提取地区信息 - 使用处理过的地区
+                location = item.get("processed_location", "")
                 
-                # 如果没有picUrl，尝试从exContent.pic获取
-                if not image_url or not image_url.strip():
-                    ex_content = item.get("exContent", {})
-                    image_url = ex_content.get("pic", "")
+                # 提取用户昵称 - 使用处理过的用户昵称
+                user_nick = item.get("processed_user_nick", "")
                 
-                # 如果没有exContent.pic，尝试从图片列表获取第一张
-                if not image_url or not image_url.strip():
-                    images = item.get("images", [])
-                    if images and len(images) > 0:
-                        image_url = images[0]
+                # 提取发布时间 - 使用处理过的发布时间
+                post_time = item.get("processed_post_time", "")
                 
-                # 如果从clickParam中提取
-                if not image_url or not image_url.strip():
-                    if "clickParam" in item and isinstance(item["clickParam"], dict) and "args" in item["clickParam"]:
-                        click_args = item["clickParam"]["args"]
-                        if "pic" in click_args:
-                            image_url = click_args["pic"]
+                # 提取卖家ID - 使用处理过的卖家ID
+                seller_id = item.get("processed_seller_id", "")
                 
-                # 确保图片URL是完整的
-                if image_url and not image_url.startswith(('http://', 'https://')):
-                    image_url = f"https:{image_url}" if image_url.startswith('//') else f"https://{image_url}"
-                
-                # 提取地区信息
-                location = ""
-                
-                # 尝试从clickParam中获取地区
-                if "clickParam" in item and isinstance(item["clickParam"], dict) and "args" in item["clickParam"]:
-                    click_args = item["clickParam"]["args"]
-                    if "location" in click_args:
-                        location = click_args["location"]
-                
-                # 如果clickParam中没有地区，尝试从area获取
-                if not location or not location.strip():
-                    location = item.get("area", "")
-                
-                # 如果area中没有地区，尝试从exContent获取
-                if not location or not location.strip():
-                    ex_content = item.get("exContent", {})
-                    location = ex_content.get("provCity", "")
+                # 提取标签 - 使用处理过的标签
+                tags = item.get("processed_tags", [])
                 
                 # 提取商品ID
                 item_id = item.get("itemId", "")
                 if not item_id:
                     # 尝试从detailParams中获取
-                    detail_params = item.get("detailParams", {})
+                    ex_content = item.get("exContent", {})
+                    detail_params = ex_content.get("detailParams", {})
                     item_id = detail_params.get("itemId", "")
-                
-                # 如果还没有商品ID，尝试从exContent中获取
-                if not item_id:
-                    ex_content = item.get("exContent", {})
-                    item_id = ex_content.get("itemId", "")
-                
-                # 如果还没有商品ID，尝试从clickParam中获取
-                if not item_id and "clickParam" in item and isinstance(item["clickParam"], dict) and "args" in item["clickParam"]:
-                    click_args = item["clickParam"]["args"]
-                    if "id" in click_args:
-                        item_id = click_args["id"]
-                
-                # 提取用户昵称
-                user_nick = ""
-                # 尝试从userNickName获取
-                user_nick = item.get("userNickName", "")
-                
-                # 如果没有userNickName，尝试从detailParams中获取
-                if not user_nick:
-                    detail_params = item.get("detailParams", {})
-                    user_nick = detail_params.get("userNick", "")
-                
-                # 如果没有detailParams.userNick，尝试从exContent中获取
-                if not user_nick:
-                    ex_content = item.get("exContent", {})
-                    user_nick = ex_content.get("userNick", "")
-                
-                # 如果没有exContent.userNick，尝试从clickParam中获取
-                if not user_nick and "clickParam" in item and isinstance(item["clickParam"], dict) and "args" in item["clickParam"]:
-                    click_args = item["clickParam"]["args"]
-                    user_nick = click_args.get("seller_nick", "")
-                
-                # 如果没有地区但有用户昵称，则使用用户昵称
-                if (not location or not location.strip()) and user_nick:
-                    location = user_nick
-                
-                # 提取发布时间
-                post_time = ""
-                # 尝试从clickParam中获取
-                if "clickParam" in item and isinstance(item["clickParam"], dict) and "args" in item["clickParam"]:
-                    click_args = item["clickParam"]["args"]
-                    if "publishTime" in click_args:
-                        timestamp = click_args["publishTime"]
-                        post_time = format_post_time(timestamp)
-                
-                # 如果clickParam中没有发布时间，尝试从exContent中获取
-                if not post_time:
-                    ex_content = item.get("exContent", {})
-                    timestamp = ex_content.get("createdTime", "")
-                    if timestamp:
-                        post_time = format_post_time(timestamp)
                 
                 item_data = {
                     'title': title,
                     'price': price_text,
                     'image': image_url,
                     'itemId': item_id,
-                    'location': location or user_nick,
-                    'postTime': post_time or "",
+                    'location': location,
+                    'userName': user_nick,
+                    'postTime': post_time,
+                    'tags': tags,
+                    'sellerId': seller_id
                 }
                 
                 # 打印调试信息
@@ -495,7 +510,9 @@ def advanced_search():
                 print(f"  - 价格: {price_text}")
                 print(f"  - 图片URL: {image_url}")
                 print(f"  - 位置: {location}")
+                print(f"  - 用户: {user_nick}")
                 print(f"  - 发布时间: {post_time}")
+                print(f"  - 标签: {tags}")
                 
                 items.append(item_data)
             except Exception as e:
@@ -579,6 +596,37 @@ def simple_search():
                 # 使用处理过的发布时间
                 post_time = item.get("processed_post_time", "")
                 
+                # 使用处理过的卖家ID
+                seller_id = item.get("processed_seller_id", "")
+                
+                # 处理标签数据
+                tags = []
+                ex_content = item.get("exContent", {})
+                fish_tags = ex_content.get("fishTags", {})
+                
+                # 提取r1标签（通常包含例如包邮图标等）
+                if "r1" in fish_tags:
+                    r1_tags = fish_tags.get("r1", {}).get("tagList", [])
+                    for tag in r1_tags:
+                        tag_data = tag.get("data", {})
+                        if "content" in tag_data:
+                            tag_content = tag_data.get("content")
+                            if tag_content:
+                                tags.append(tag_content)
+                
+                # 提取r2标签（通常包含例如"2小时前发布"、"1天内上新"等）
+                if "r2" in fish_tags:
+                    r2_tags = fish_tags.get("r2", {}).get("tagList", [])
+                    for tag in r2_tags:
+                        tag_data = tag.get("data", {})
+                        if "content" in tag_data:
+                            tag_content = tag_data.get("content")
+                            if tag_content:
+                                tags.append(tag_content)
+                                # 如果包含"上新"标签且没有发布时间，将其作为发布时间
+                                if "上新" in tag_content and not post_time:
+                                    post_time = tag_content
+                
                 # 提取商品ID
                 item_id = item.get("itemId", "")
                 if not item_id:
@@ -595,6 +643,8 @@ def simple_search():
                     'location': location,
                     'userName': user_nick,
                     'postTime': post_time,
+                    'tags': tags,
+                    'sellerId': seller_id
                 }
                 
                 # 打印调试信息
@@ -670,8 +720,8 @@ def search_items_simple(auto_add_commodity, keyword, price_range='0,9999999', is
         'keyword': keyword,
         'fromFilter': True,
         'rowsPerPage': page_size,
-        'sortValue': '',
-        'sortField': '',
+        'sortValue': 'desc',
+        'sortField': 'create',
         'customDistance': '',
         'gps': '',
         'propValueStr': {'searchFilter': f"priceRange:{price_range};"},
@@ -776,6 +826,28 @@ def search_items_simple(auto_add_commodity, keyword, price_range='0,9999999', is
                     detail_params = ex_content.get("detailParams", {})
                     user_nick = detail_params.get("userNick", "")
                 
+                # 获取卖家ID
+                seller_id = ""
+                # 尝试从clickParam中获取seller_id
+                click_param = item_main.get("clickParam", {})
+                if click_param and isinstance(click_param, dict) and "args" in click_param:
+                    click_args = click_param["args"]
+                    if "seller_id" in click_args:
+                        seller_id = click_args["seller_id"]
+                
+                # 如果在clickParam中找不到，尝试从其他地方获取
+                if not seller_id:
+                    # 尝试从jump2XianYuHao中获取
+                    jump_to_user = item_main.get("jump2XianYuHao", {})
+                    if jump_to_user and isinstance(jump_to_user, dict) and "clickParam" in jump_to_user:
+                        jump_click_param = jump_to_user["clickParam"]
+                        if isinstance(jump_click_param, dict) and "args" in jump_click_param:
+                            jump_args = jump_click_param["args"]
+                            if "user_id" in jump_args:
+                                seller_id = jump_args["user_id"]
+                            elif "seller_id" in jump_args:
+                                seller_id = jump_args["seller_id"]
+                
                 # 获取发布时间
                 post_time = ""
                 click_param = item_main.get("clickParam", {})
@@ -793,6 +865,33 @@ def search_items_simple(auto_add_commodity, keyword, price_range='0,9999999', is
                         if tag.get("data", {}).get("content", "").endswith("发布"):
                             post_time = tag.get("data", {}).get("content", "")
                             break
+                
+                # 提取标签信息
+                tags = []
+                fish_tags = ex_content.get("fishTags", {})
+                
+                # 提取r1标签（通常包含例如包邮图标等）
+                if "r1" in fish_tags:
+                    r1_tags = fish_tags.get("r1", {}).get("tagList", [])
+                    for tag in r1_tags:
+                        tag_data = tag.get("data", {})
+                        if "content" in tag_data:
+                            tag_content = tag_data.get("content")
+                            if tag_content:
+                                tags.append(tag_content)
+                
+                # 提取r2标签（通常包含例如"2小时前发布"、"1天内上新"等）
+                if "r2" in fish_tags:
+                    r2_tags = fish_tags.get("r2", {}).get("tagList", [])
+                    for tag in r2_tags:
+                        tag_data = tag.get("data", {})
+                        if "content" in tag_data:
+                            tag_content = tag_data.get("content")
+                            if tag_content:
+                                tags.append(tag_content)
+                                # 如果包含"上新"标签且没有发布时间，将其作为发布时间
+                                if "上新" in tag_content and not post_time:
+                                    post_time = tag_content
                 
                 # 提取标题
                 title = item_main.get("title", "")
@@ -813,6 +912,8 @@ def search_items_simple(auto_add_commodity, keyword, price_range='0,9999999', is
                 item_main["processed_location"] = location
                 item_main["processed_user_nick"] = user_nick
                 item_main["processed_post_time"] = post_time
+                item_main["processed_tags"] = tags
+                item_main["processed_seller_id"] = seller_id
                 
                 result_items.append(item_main)
             except Exception as e:
@@ -864,130 +965,31 @@ def format_post_time(timestamp):
     except:
         return timestamp
 
-def advanced_search_items(auto_add_commodity, keyword, filters="", sort_type="default", is_attention=False):
-    """
-    高级搜索商品
+def get_location(item):
+    """从商品数据中获取位置信息"""
+    # 首先检查是否有处理好的location字段
+    if "processed_location" in item:
+        return item["processed_location"]
     
-    参数:
-    - keyword: 搜索关键词
-    - filters: 过滤条件，格式为"filter1:value1;filter2:value2"
-    - sort_type: 排序方式，可选值: default(默认), price_asc(价格升序), price_desc(价格降序), time_desc(最新发布)
-    - is_attention: 是否只看关注的人
+    # 尝试从exContent中的area字段获取地区
+    ex_content = item.get("exContent", {})
+    location = ex_content.get("area", "")
     
-    返回:
-    - 商品列表
-    """
-    # 使用Session而不是driver.session
-    session = Session()
-    session.cookies.update(auto_add_commodity.cookies)
-    session.headers.update(auto_add_commodity.headers)
+    # 尝试获取用户昵称
+    user_nick = ex_content.get("userNickName", "")
+    if not user_nick:
+        detail_params = ex_content.get("detailParams", {})
+        user_nick = detail_params.get("userNick", "")
     
-    # 获取当前时间戳
-    timestamp = str(round(time.time() * 1000))
+    # 如果地区和用户名都有，则返回地区
+    if location:
+        return location
+    # 如果只有用户名没有地区，则使用用户名作为位置
+    elif user_nick:
+        return "未知地区"
     
-    # 构建排序参数
-    sort_field = ""
-    sort_value = ""
-    if sort_type == "price_asc":
-        sort_field = "price"
-        sort_value = "1"  # 升序
-    elif sort_type == "price_desc":
-        sort_field = "price"
-        sort_value = "0"  # 降序
-    elif sort_type == "time_desc":
-        sort_field = "postTime"
-        sort_value = "0"  # 最新发布
-    
-    # 构建请求参数
-    params = {
-        'jsv': '2.7.2',
-        'appKey': '34839810',
-        't': timestamp,
-        'sign': '',
-        'v': '1.0',
-        'type': 'originaljson',
-        'accountSite': 'xianyu',
-        'dataType': 'json',
-        'timeout': '20000',
-        'api': 'mtop.taobao.idlemtopsearch.pc.search',
-        'sessionOption': 'AutoLoginOnly',
-        'spm_cnt': 'a21ybx.search.0.0',
-        'spm_pre': 'a21ybx.search.searchInput.0',
-    }
-    
-    # 构建请求数据
-    data = {
-        'data': json.dumps({
-            'pageNumber': 1,
-            'keyword': keyword,
-            'fromFilter': True,
-            'rowsPerPage': 50,  # 增加每页结果数
-            'sortValue': sort_value,
-            'sortField': sort_field,
-            'customDistance': '',
-            'gps': '',
-            'propValueStr': {'searchFilter': filters},
-            'customGps': '',
-            'searchReqFromPage': 'pcSearch',
-            'extraFilterValue': '{}',
-            'userPositionJson': '{}'
-        }, separators=(',', ':'))
-    }
-    
-    # 添加签名
-    params = auto_add_commodity.createRequestParams(params=params, data=data, timestamp=timestamp)
-    
-    # 发送请求
-    try:
-        print(f"正在搜索: {keyword}, 过滤条件: {filters}, 排序方式: {sort_type}")
-        response = session.post(
-            "https://h5api.m.goofish.com/h5/mtop.taobao.idlemtopsearch.pc.search/1.0/",
-            params=params, 
-            data=data
-        )
-        
-        if response.status_code != 200:
-            print(f"搜索请求失败: 状态码 {response.status_code}")
-            return []
-            
-        res_json = response.json()
-        if 'data' not in res_json:
-            print(f"返回数据格式异常: {res_json}")
-            return []
-            
-        res = res_json['data']
-        if 'resultList' not in res:
-            print(f"没有商品列表数据")
-            return []
-            
-        # 处理搜索结果
-        result_items = []
-        for item in res['resultList']:
-            if 'data' not in item:
-                continue
-                
-            item_data = item['data']
-            if not item_data or 'item' not in item_data:
-                continue
-                
-            item_main = item_data.get('item', {}).get('main')
-            if not item_main:
-                continue
-            
-            # 如果需要只看关注的人
-            if is_attention:
-                item_ex_content = item_main.get('exContent', {})
-                fish_tags = str(item_ex_content.get('fishTags', '[]'))
-                if '你关注过的人' not in fish_tags:
-                    continue
-            
-            result_items.append(item_main)
-        
-        print(f"搜索完成，找到 {len(result_items)} 个商品")
-        return result_items
-    except Exception as e:
-        print(f"搜索过程出错: {e}")
-        return []
+    # 如果都没有，返回未知位置
+    return "未知位置"
 
 @app.route('/add_collection', methods=['POST'])
 def add_collection():
@@ -1063,32 +1065,6 @@ def get_locations():
         {"code": "441900", "name": "东莞"}
     ]
     return jsonify({"success": True, "locations": locations})
-
-def get_location(item):
-    """从商品数据中获取位置信息"""
-    # 首先检查是否有处理好的location字段
-    if "processed_location" in item:
-        return item["processed_location"]
-    
-    # 尝试从exContent中的area字段获取地区
-    ex_content = item.get("exContent", {})
-    location = ex_content.get("area", "")
-    
-    # 尝试获取用户昵称
-    user_nick = ex_content.get("userNickName", "")
-    if not user_nick:
-        detail_params = ex_content.get("detailParams", {})
-        user_nick = detail_params.get("userNick", "")
-    
-    # 如果地区和用户名都有，则返回地区
-    if location:
-        return location
-    # 如果只有用户名没有地区，则使用用户名作为位置
-    elif user_nick:
-        return "未知地区"
-    
-    # 如果都没有，返回未知位置
-    return "未知位置"
 
 if __name__ == '__main__':
     # 使用8080端口避免与MacOS AirPlay冲突

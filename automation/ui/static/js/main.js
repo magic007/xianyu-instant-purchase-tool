@@ -14,6 +14,77 @@ document.addEventListener('DOMContentLoaded', function() {
     const tableView = document.getElementById('tableView');
     const advancedSearchToggle = document.querySelector('[data-bs-toggle="collapse"]');
     const locationSelect = document.getElementById('location');
+    const autoRefreshCheckbox = document.getElementById('autoRefresh');
+    const refreshIntervalInput = document.getElementById('refreshInterval');
+    
+    // 自动刷新计时器
+    let refreshTimer = null;
+    
+    // 更新自动刷新状态
+    function updateAutoRefresh() {
+        // 清除现有的定时器
+        if (refreshTimer) {
+            clearInterval(refreshTimer);
+            refreshTimer = null;
+        }
+        
+        // 如果启用了自动刷新，设置新的定时器
+        if (autoRefreshCheckbox.checked) {
+            const interval = Math.max(5, parseInt(refreshIntervalInput.value) || 30) * 1000;
+            refreshTimer = setInterval(function() {
+                // 只有在非加载状态才触发搜索
+                if (loadingIndicator.classList.contains('d-none')) {
+                    // 如果已经有搜索结果，则进行刷新搜索
+                    if (searchResults.children.length > 0 || searchResultsTable.children.length > 0) {
+                        // 保存搜索滚动位置
+                        const scrollPosition = window.scrollY;
+                        
+                        // 触发表单提交事件
+                        const submitEvent = new Event('submit', {
+                            'bubbles': true,
+                            'cancelable': true
+                        });
+                        searchForm.dispatchEvent(submitEvent);
+                        
+                        // 添加刷新指示器
+                        const refreshIndicator = document.createElement('div');
+                        refreshIndicator.className = 'auto-refresh-indicator';
+                        refreshIndicator.innerHTML = `<small class="text-muted">自动刷新于 ${new Date().toLocaleTimeString()}</small>`;
+                        resultStats.appendChild(refreshIndicator);
+                        
+                        // 自动刷新后3秒移除指示器
+                        setTimeout(() => {
+                            if (refreshIndicator && refreshIndicator.parentNode) {
+                                refreshIndicator.parentNode.removeChild(refreshIndicator);
+                            }
+                            
+                            // 恢复滚动位置
+                            window.scrollTo(0, scrollPosition);
+                        }, 3000);
+                    }
+                }
+            }, interval);
+            
+            console.log(`启用自动刷新，每 ${interval/1000} 秒刷新一次`);
+        } else {
+            console.log('禁用自动刷新');
+        }
+    }
+    
+    // 监听自动刷新选项变化
+    autoRefreshCheckbox.addEventListener('change', updateAutoRefresh);
+    refreshIntervalInput.addEventListener('change', function() {
+        if (autoRefreshCheckbox.checked) {
+            updateAutoRefresh();
+        }
+    });
+    
+    // 页面卸载时清除定时器
+    window.addEventListener('beforeunload', function() {
+        if (refreshTimer) {
+            clearInterval(refreshTimer);
+        }
+    });
     
     // 视图切换
     gridViewBtn.addEventListener('click', function() {
@@ -86,6 +157,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.items.length > 0) {
                     console.log("服务器返回的数据:", JSON.stringify(data.items[0]));
                     displaySearchResults(data.items);
+                    
+                    // 检查是否需要启动自动刷新
+                    if (autoRefreshCheckbox.checked && !refreshTimer) {
+                        updateAutoRefresh();
+                    }
                 } else {
                     const emptyMessage = '<div class="col-12 empty-results"><i class="bi bi-search" style="font-size: 2rem;"></i><p class="mt-3">没有找到匹配的商品</p></div>';
                     searchResults.innerHTML = emptyMessage;
@@ -116,6 +192,8 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log("发布时间:", item.postTime);
             console.log("位置信息:", item.location);
             console.log("图片信息:", item.image);
+            console.log("标签信息:", item.tags);
+            console.log("用户昵称:", item.userName);
             
             // 卡片视图
             const itemNode = document.importNode(itemTemplate.content, true);
@@ -141,6 +219,53 @@ document.addEventListener('DOMContentLoaded', function() {
                 postTimeElement.style.display = 'none';
             }
             
+            // 检查.item-details元素是否存在，如果不存在则找一个合适的父元素
+            const detailsContainer = itemNode.querySelector('.item-details') || 
+                                    itemNode.querySelector('.card-body');
+            
+            // 添加用户昵称（如果有）
+            if (item.userName && item.userName.trim() !== '') {
+                const userElement = document.createElement('div');
+                userElement.className = 'item-user text-muted mt-1';
+                userElement.innerHTML = `<i class="bi bi-person"></i> ${item.userName}`;
+                detailsContainer.appendChild(userElement);
+            }
+            
+            // 添加标签（如果有）
+            if (item.tags && item.tags.length > 0) {
+                const tagsContainer = document.createElement('div');
+                tagsContainer.className = 'item-tags mt-2';
+                
+                item.tags.forEach(tag => {
+                    if (tag) {
+                        const tagElement = document.createElement('span');
+                        
+                        // 根据标签内容设置不同的样式
+                        if (tag === 'freeShippingIcon') {
+                            // 对包邮图标特殊处理
+                            tagElement.className = 'badge bg-danger text-white me-1 mb-1';
+                            tagElement.textContent = '包邮';
+                        } else if (tag.includes('上新')) {
+                            // 对上新标签特殊处理，使用绿色背景
+                            tagElement.className = 'badge bg-success text-white me-1 mb-1';
+                            tagElement.textContent = tag;
+                        } else if (tag.includes('发布') || tag.includes('小时前') || tag.includes('分钟前')) {
+                            // 对发布时间标签特殊处理，使用浅黄色背景
+                            tagElement.className = 'badge bg-warning text-dark me-1 mb-1';
+                            tagElement.textContent = tag;
+                        } else {
+                            // 默认样式
+                            tagElement.className = 'badge bg-light text-dark me-1 mb-1';
+                            tagElement.textContent = tag;
+                        }
+                        
+                        tagsContainer.appendChild(tagElement);
+                    }
+                });
+                
+                detailsContainer.appendChild(tagsContainer);
+            }
+            
             const imgElement = itemNode.querySelector('.item-image');
             if (item.image && item.image.trim() !== '') {
                 console.log('设置商品图片URL:', item.image); // 调试信息
@@ -158,6 +283,23 @@ document.addEventListener('DOMContentLoaded', function() {
             const addButton = itemNode.querySelector('.add-collection');
             addButton.dataset.itemId = item.itemId;
             
+            // 设置聊天按钮属性
+            const chatButton = itemNode.querySelector('.chat-btn');
+            if (item.itemId) {
+                // 构建聊天URL - 需要itemId和卖家userId (如果有)
+                let chatUrl = `https://www.goofish.com/im?spm=a21ybx.item.want.1.46023da6vVfVzj&itemId=${item.itemId}`;
+                
+                // 如果有卖家userId，添加到URL
+                if (item.sellerId) {
+                    chatUrl += `&peerUserId=${item.sellerId}`;
+                }
+                
+                chatButton.href = chatUrl;
+                chatButton.title = "与卖家聊天";
+            } else {
+                chatButton.style.display = 'none'; // 如果没有商品ID，隐藏聊天按钮
+            }
+            
             // 添加到结果区域
             searchResults.appendChild(itemNode);
             
@@ -165,7 +307,54 @@ document.addEventListener('DOMContentLoaded', function() {
             const tableRow = document.importNode(tableRowTemplate.content, true);
             
             // 填充表格数据
-            tableRow.querySelector('.item-title').textContent = item.title;
+            const titleElement = tableRow.querySelector('.item-title');
+            titleElement.textContent = item.title;
+            
+            // 添加用户昵称和标签到表格视图的标题列
+            if (item.userName || (item.tags && item.tags.length > 0)) {
+                const extraInfo = document.createElement('div');
+                extraInfo.className = 'small mt-1';
+                
+                if (item.userName) {
+                    const userSpan = document.createElement('span');
+                    userSpan.className = 'text-muted me-2';
+                    userSpan.innerHTML = `<i class="bi bi-person"></i> ${item.userName}`;
+                    extraInfo.appendChild(userSpan);
+                }
+                
+                if (item.tags && item.tags.length > 0) {
+                    item.tags.forEach(tag => {
+                        if (tag) {
+                            const tagSpan = document.createElement('span');
+                            
+                            // 根据标签内容设置不同的样式
+                            if (tag === 'freeShippingIcon') {
+                                // 对包邮图标特殊处理
+                                tagSpan.className = 'badge bg-danger text-white me-1';
+                                tagSpan.textContent = '包邮';
+                            } else if (tag.includes('上新')) {
+                                // 对上新标签特殊处理，使用绿色背景
+                                tagSpan.className = 'badge bg-success text-white me-1';
+                                tagSpan.textContent = tag;
+                            } else if (tag.includes('发布') || tag.includes('小时前') || tag.includes('分钟前')) {
+                                // 对发布时间标签特殊处理，使用浅黄色背景
+                                tagSpan.className = 'badge bg-warning text-dark me-1';
+                                tagSpan.textContent = tag;
+                            } else {
+                                // 默认样式
+                                tagSpan.className = 'badge bg-light text-dark me-1';
+                                tagSpan.textContent = tag;
+                            }
+                            
+                            extraInfo.appendChild(tagSpan);
+                        }
+                    });
+                }
+                
+                titleElement.appendChild(document.createElement('br'));
+                titleElement.appendChild(extraInfo);
+            }
+            
             tableRow.querySelector('.item-price').textContent = item.price || "未知价格";
             tableRow.querySelector('.item-post-time').textContent = item.postTime || '未知';
             tableRow.querySelector('.item-location').textContent = item.location || '未知';
@@ -183,6 +372,23 @@ document.addEventListener('DOMContentLoaded', function() {
             // 设置收藏按钮属性
             const tableAddButton = tableRow.querySelector('.add-collection');
             tableAddButton.dataset.itemId = item.itemId;
+            
+            // 设置表格视图中的聊天按钮属性
+            const tableChatButton = tableRow.querySelector('.chat-btn');
+            if (item.itemId) {
+                // 构建聊天URL - 需要itemId和卖家userId (如果有)
+                let chatUrl = `https://www.goofish.com/im?spm=a21ybx.item.want.1.46023da6vVfVzj&itemId=${item.itemId}`;
+                
+                // 如果有卖家userId，添加到URL
+                if (item.sellerId) {
+                    chatUrl += `&peerUserId=${item.sellerId}`;
+                }
+                
+                tableChatButton.href = chatUrl;
+                tableChatButton.title = "与卖家聊天";
+            } else {
+                tableChatButton.style.display = 'none'; // 如果没有商品ID，隐藏聊天按钮
+            }
             
             // 添加到表格结果区域
             searchResultsTable.appendChild(tableRow);
